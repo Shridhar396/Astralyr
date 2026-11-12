@@ -427,6 +427,38 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
             </button>
           </div>
 
+          {/* Sync Offset Controls */}
+          {onAdjustOffset && (
+            <div
+              className="flex items-center space-x-1 px-2 py-1 rounded-xl bg-white/5 border border-white/10 text-[11px]"
+              title="Fine-tune lyric synchronization offset ([ and ] hotkeys, \ to reset)"
+            >
+              <span className="text-white/40 mr-0.5 text-[10px]">Sync:</span>
+              <button
+                onClick={() => onAdjustOffset(-0.5)}
+                className="px-1.5 py-0.5 rounded text-[10px] bg-white/10 hover:bg-white/20 text-white font-medium active:scale-95 transition-all"
+                title="Delay lyrics by -0.5s ([)"
+              >
+                -0.5s
+              </button>
+              <button
+                onClick={onResetOffset}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-all ${
+                  syncOffset !== 0 ? 'text-white bg-white/25 font-semibold' : 'text-white/40'
+                }`}
+                title="Reset sync offset to 0.0s (\)"
+              >
+                {syncOffset === 0 ? '0.0s' : `${syncOffset > 0 ? '+' : ''}${syncOffset.toFixed(1)}s`}
+              </button>
+              <button
+                onClick={() => onAdjustOffset(0.5)}
+                className="px-1.5 py-0.5 rounded text-[10px] bg-white/10 hover:bg-white/20 text-white font-medium active:scale-95 transition-all"
+                title="Advance lyrics by +0.5s (])"
+              >
+                +0.5s
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center space-x-1.5">
             {/* Library / Playlists Button */}
