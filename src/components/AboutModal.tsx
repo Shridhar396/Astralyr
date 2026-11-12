@@ -77,7 +77,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
 
         {/* Version Badge */}
         <div className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono text-white/60 mb-5">
-          v1.0.0 · synced lyrics + ambient light
+          v1.0.1 · synced lyrics + ambient light
         </div>
 
         {/* Features / Highlights */}

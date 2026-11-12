@@ -41,21 +41,16 @@ jobs:
       - name: Install project dependencies
         run: pnpm install --frozen-lockfile=false
 
-      - name: Build Web & Electron
-        run: |
-          pnpm run build
-          pnpm run build:electron
-
-      - name: Package with electron-builder
+      - name: Build & Package Electron
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
-            pnpm exec electron-builder --win --publish never
+            pnpm run electron:build -- --win --publish never
           elif [ "${{ runner.os }}" = "macOS" ]; then
-            pnpm exec electron-builder --mac --publish never
+            pnpm run electron:build -- --mac --publish never
           else
-            pnpm exec electron-builder --linux AppImage --publish never
+            pnpm run electron:build -- --linux AppImage --publish never
           fi
         shell: bash
 
