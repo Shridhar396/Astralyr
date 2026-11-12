@@ -60,14 +60,8 @@ jobs:
         shell: bash
 
       - name: Generate SHA-256 Checksums
-        shell: bash
         run: |
-          cd release
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            powershell -Command "Get-ChildItem -File | Where-Object { $_.Extension -match '\.(exe|blockmap|zip)$' } | Get-FileHash -Algorithm SHA256 | ForEach-Object { \"$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)\" } | Out-File -FilePath checksums.txt -Encoding utf8"
-          else
-            find . -maxdepth 1 -type f \( -name "*.dmg" -o -name "*.AppImage" -o -name "*.zip" -o -name "*.blockmap" \) -exec sha256sum {} + > checksums.txt
-          fi
+          node -e "const fs = require('fs'), crypto = require('crypto'), path = require('path'); const dir = './release'; const files = fs.readdirSync(dir).filter(f => /\.(exe|dmg|AppImage|zip|blockmap)$/i.test(f)); const lines = files.map(f => crypto.createHash('sha256').update(fs.readFileSync(path.join(dir, f))).digest('hex') + '  ' + f); fs.writeFileSync(path.join(dir, 'checksums.txt'), lines.join('\n') + '\n');"
 
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2
