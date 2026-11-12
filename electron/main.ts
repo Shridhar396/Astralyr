@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, globalShortcut, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -131,6 +131,22 @@ function createWindow(): void {
   });
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // Intercept new window requests (e.g. target="_blank" links like GitHub) and open them in user's default browser
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https:') || url.startsWith('http:')) {
+      shell.openExternal(url);
+      return { action: 'deny' };
+    }
+    return { action: 'allow' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url.startsWith('https:') || url.startsWith('http:')) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
   });
 
   // F11 Fullscreen toggle

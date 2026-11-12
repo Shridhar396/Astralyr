@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { X, ExternalLink, Sparkles, Music2, Radio } from 'lucide-react';
+import appIcon from '../../assets/branding/icon-512.png';
 
 interface AboutModalProps {
   isOpen: boolean;
@@ -56,7 +57,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
             style={{ backgroundColor: 'var(--accent-rgb, #ffffff)' }}
           />
           <img
-            src="/icon-512.png"
+            src={appIcon}
             alt="Constella Icon"
             className="relative w-20 h-20 rounded-2xl shadow-xl object-cover border border-white/15"
           />
@@ -77,7 +78,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
 
         {/* Version Badge */}
         <div className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono text-white/60 mb-5">
-          v1.0.1 · synced lyrics + ambient light
+          v1.0.2 · synced lyrics + ambient light
         </div>
 
         {/* Features / Highlights */}
@@ -104,7 +105,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
         {/* Actions & Links */}
         <div className="w-full flex items-center justify-between gap-3 pt-3 border-t border-white/10">
           <a
-            href="https://github.com/yourname/constella"
+            href="https://github.com/Shridhar396/Constella"
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 inline-flex items-center justify-center space-x-2 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white/80 hover:text-white transition-colors"
