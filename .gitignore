@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Production builds
+dist/
+dist-electron/
+release/
+src-tauri/target/
+
+# Environment and local configurations
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor and OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Media & Binaries
+*.mp3
+*.mp4
+*.wav
+*.exe
+reference/
+
+# Local screenshots and scratch artifacts
+screenshot-*.png
+*.tmp

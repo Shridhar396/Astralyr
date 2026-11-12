@@ -1,0 +1,83 @@
+name: Multi-Platform Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install system dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools libfuse2
+
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build Web & Electron
+        run: |
+          pnpm run build
+          pnpm run build:electron
+
+      - name: Package with electron-builder
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            pnpm exec electron-builder --win --publish never
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            pnpm exec electron-builder --mac --publish never
+          else
+            pnpm exec electron-builder --linux AppImage --publish never
+          fi
+        shell: bash
+
+      - name: Generate SHA-256 Checksums
+        shell: bash
+        run: |
+          cd release
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            powershell -Command "Get-ChildItem -File | Where-Object { $_.Extension -match '\.(exe|blockmap|zip)$' } | Get-FileHash -Algorithm SHA256 | ForEach-Object { \"$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)\" } | Out-File -FilePath checksums.txt -Encoding utf8"
+          else
+            find . -maxdepth 1 -type f \( -name "*.dmg" -o -name "*.AppImage" -o -name "*.zip" -o -name "*.blockmap" \) -exec sha256sum {} + > checksums.txt
+          fi
+
+      - name: Upload Release Artifacts
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+            release/*.blockmap
+            release/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.shridhar396.constella",
+  "productName": "Constella",
+  "directories": {
+    "output": "release",
+    "buildResources": "assets/branding"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*",
+    "assets/branding/**/*"
+  ],
+  "publish": {
+    "provider": "github",
+    "owner": "Shridhar396",
+    "repo": "Constella"
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "assets/branding/icon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Constella"
+  },
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "icon": "assets/branding/icon.icns",
+    "category": "public.app-category.music"
+  },
+  "linux": {
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "assets/branding/icon-512.png",
+    "category": "AudioVideo"
+  }
+}

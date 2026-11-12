@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --accent: 255 255 255;
+  --accent-rgb: rgb(255, 255, 255);
+  --accent-hex: #ffffff;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+  background-color: transparent;
+}
+
+/* Accent utilities based on single --accent CSS variable */
+.text-accent {
+  color: rgb(var(--accent));
+}
+
+.bg-accent {
+  background-color: rgb(var(--accent));
+}
+
+.border-accent {
+  border-color: rgb(var(--accent) / 0.5);
+}
+
+.bg-accent-subtle {
+  background-color: rgb(var(--accent) / 0.12);
+}
+
+.shadow-accent {
+  box-shadow: 0 0 14px rgb(var(--accent) / 0.45);
+}
+
+.drop-shadow-accent {
+  filter: drop-shadow(0 0 8px rgb(var(--accent) / 0.6));
+}
+
+/* Glassmorphism helpers */
+.glass-panel {
+  background: rgba(10, 14, 26, 0.72);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-pill:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.text-glow-primary {
+  text-shadow: 0 0 12px var(--glow-primary, rgb(var(--accent) / 0.7));
+}
+
+.text-glow-secondary {
+  text-shadow: 0 0 12px var(--glow-secondary, rgb(var(--accent) / 0.5));
+}
+
+/* Custom minimal scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+

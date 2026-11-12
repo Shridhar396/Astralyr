@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f1118"/>
+      <stop offset="100%" stop-color="#030406"/>
+    </linearGradient>
+
+    <!-- Center Soft Glow -->
+    <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.32"/>
+      <stop offset="35%" stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="70%" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Glow Filter -->
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="starGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- 4-point star definition -->
+    <g id="sparkleNode">
+      <path d="M 0,-14 Q 0,0 -14,0 Q 0,0 0,14 Q 0,0 14,0 Q 0,0 0,-14 Z" fill="#ffffff" filter="url(#starGlow)"/>
+    </g>
+  </defs>
+
+  <!-- Squircle Base -->
+  <rect x="0" y="0" width="512" height="512" rx="115" ry="115" fill="url(#bgGrad)"/>
+
+  <!-- Radial Starlight Ambience -->
+  <circle cx="256" cy="256" r="210" fill="url(#centerGlow)"/>
+
+  <!-- Constellation Connecting Lines -->
+  <g stroke="#ffffff" stroke-width="2.6" opacity="0.68" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="118" y1="330" x2="236" y2="214"/>
+    <line x1="236" y1="214" x2="300" y2="170"/>
+    <line x1="300" y1="170" x2="398" y2="214"/>
+    <line x1="398" y1="214" x2="330" y2="334"/>
+    <line x1="330" y1="334" x2="236" y2="214"/>
+  </g>
+
+  <!-- Glowing Active Ring -->
+  <circle cx="256" cy="256" r="78" fill="none" stroke="#ffffff" stroke-width="5" filter="url(#softGlow)"/>
+
+  <!-- Center Active Sparkle Star -->
+  <path d="M 256,206 Q 256,256 206,256 Q 256,256 256,306 Q 256,256 306,256 Q 256,256 256,206 Z" fill="#ffffff" filter="url(#softGlow)"/>
+
+  <!-- Constellation Word Nodes -->
+  <use href="#sparkleNode" x="118" y="330" transform="scale(0.85) translate(21, 58)"/>
+  <use href="#sparkleNode" x="236" y="214" transform="scale(0.7) translate(101, 92)"/>
+  <use href="#sparkleNode" x="300" y="170" transform="scale(0.8) translate(75, 42)"/>
+  <use href="#sparkleNode" x="398" y="214" transform="scale(0.95) translate(21, 11)"/>
+  <use href="#sparkleNode" x="330" y="334" transform="scale(0.8) translate(82, 83)"/>
+</svg>
+
