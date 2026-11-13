@@ -20,6 +20,7 @@ import {
   Library,
   Heart,
   FolderPlus,
+  Radio,
 } from 'lucide-react';
 import { MusicTrack } from '../types/lyrics';
 import { PlaybackState } from '../types/radio';
@@ -72,6 +73,10 @@ interface BottomTrackPillProps {
   onOpenAddToPlaylist?: (track: MusicTrack | AudiusTrackItem) => void;
   isTrackFavorited?: boolean;
   onToggleFavorite?: () => void;
+  isSystemAudioActive?: boolean;
+  systemAudioStatus?: 'inactive' | 'listening' | 'silence' | 'error';
+  onToggleSystemAudio?: () => void;
+  onSetManualTrack?: (title: string, artist: string) => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
 }
@@ -102,11 +107,18 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
   onOpenAddToPlaylist,
   isTrackFavorited = false,
   onToggleFavorite,
+  isSystemAudioActive = false,
+  systemAudioStatus = 'inactive',
+  onToggleSystemAudio,
+  onSetManualTrack,
   onMouseEnter,
   onMouseLeave,
 }) => {
   const [showSearchDrawer, setShowSearchDrawer] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showManualSearch, setShowManualSearch] = useState(false);
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualArtist, setManualArtist] = useState('');
 
   // Audius Live Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -512,6 +524,66 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
               <span className="hidden sm:inline">Glow Color</span>
             </button>
 
+            {/* System Audio / Share a tab source switcher */}
+            {onToggleSystemAudio && (
+              <button
+                onClick={onToggleSystemAudio}
+                className={`px-2.5 py-1.5 rounded-xl flex items-center space-x-1.5 border transition-all text-[11px] font-medium ${
+                  isSystemAudioActive
+                    ? 'bg-white/20 border-white/50 text-white shadow-sm ring-1 ring-white/20'
+                    : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+                }`}
+                title={
+                  typeof window !== 'undefined' && !!(window as any).electronAPI?.isElectron
+                    ? 'System Audio capture (Spotify, YouTube Music, Apple Music)'
+                    : 'Share audio from a browser tab (Tick "Also share tab audio")'
+                }
+              >
+                <Radio className={`w-3.5 h-3.5 ${isSystemAudioActive ? 'text-cyan-300 animate-pulse' : ''}`} />
+                <span className="hidden sm:inline">
+                  {typeof window !== 'undefined' && !!(window as any).electronAPI?.isElectron
+                    ? 'System Audio'
+                    : 'Share a tab'}
+                </span>
+
+                {/* System Audio Status Indicator */}
+                {isSystemAudioActive && (
+                  <span className="flex items-center space-x-1 pl-0.5">
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        systemAudioStatus === 'listening'
+                          ? 'bg-emerald-400 animate-pulse'
+                          : systemAudioStatus === 'silence'
+                          ? 'bg-amber-400/80'
+                          : systemAudioStatus === 'error'
+                          ? 'bg-red-400'
+                          : 'bg-white/40'
+                      }`}
+                    />
+                    <span
+                      className={`text-[9px] uppercase tracking-wider font-mono hidden md:inline ${
+                        systemAudioStatus === 'listening'
+                          ? 'text-emerald-300'
+                          : systemAudioStatus === 'silence'
+                          ? 'text-amber-300/80'
+                          : systemAudioStatus === 'error'
+                          ? 'text-red-300'
+                          : 'text-white/40'
+                      }`}
+                    >
+                      {systemAudioStatus === 'listening'
+                        ? 'Live'
+                        : systemAudioStatus === 'silence'
+                        ? 'Silence'
+                        : systemAudioStatus === 'error'
+                        ? 'Err'
+                        : 'Idle'}
+                    </span>
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* Audius Music Search Toggle */}
             <button
               onClick={() => setShowSearchDrawer((prev) => !prev)}
@@ -535,6 +607,22 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
               <FileAudio className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Local File</span>
             </button>
+
+            {/* Manual Song Lookup for System Audio */}
+            {isSystemAudioActive && onSetManualTrack && (
+              <button
+                onClick={() => setShowManualSearch((prev) => !prev)}
+                className={`px-2.5 py-1.5 rounded-xl flex items-center space-x-1.5 border transition-all text-[11px] font-medium ${
+                  showManualSearch
+                    ? 'bg-white/20 border-white/40 text-white'
+                    : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+                }`}
+                title="Search Song for Lyrics (System Audio Manual Match)"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Search Song</span>
+              </button>
+            )}
 
             {/* Volume Control */}
             <div className="flex items-center space-x-1.5 px-2 py-1 rounded-xl bg-white/5 border border-white/10">
@@ -639,6 +727,49 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
               ))}
             </div>
           </div>
+        )}
+
+        {/* Manual Song Search Drawer (System Audio Fallback) */}
+        {showManualSearch && isSystemAudioActive && onSetManualTrack && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (manualTitle.trim()) {
+                onSetManualTrack(manualTitle.trim(), manualArtist.trim());
+                setShowManualSearch(false);
+              }
+            }}
+            className="mt-3 pt-3 border-t border-white/10 flex items-center space-x-2 animate-in fade-in duration-150"
+          >
+            <input
+              type="text"
+              placeholder="Song title..."
+              value={manualTitle}
+              onChange={(e) => setManualTitle(e.target.value)}
+              className="flex-1 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-white/40 focus:outline-none focus:border-white/30"
+              autoFocus
+            />
+            <input
+              type="text"
+              placeholder="Artist (optional)..."
+              value={manualArtist}
+              onChange={(e) => setManualArtist(e.target.value)}
+              className="flex-1 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-white/40 focus:outline-none focus:border-white/30"
+            />
+            <button
+              type="submit"
+              className="px-3 py-1.5 rounded-xl bg-white text-black text-xs font-semibold hover:bg-white/90 transition-all shadow"
+            >
+              Set Song
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowManualSearch(false)}
+              className="p-1.5 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-colors text-xs"
+            >
+              ✕
+            </button>
+          </form>
         )}
       </div>
     </div>

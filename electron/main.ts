@@ -1,8 +1,67 @@
-import { app, BrowserWindow, ipcMain, globalShortcut, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  globalShortcut,
+  shell,
+  session,
+  desktopCapturer,
+  safeStorage,
+} from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { spawn, ChildProcess } from 'child_process';
 
 let mainWindow: BrowserWindow | null = null;
+let smtcProcess: ChildProcess | null = null;
+let currentMediaSession: any = { status: 'NO_SESSION' };
+
+function startSmtcDaemon(): void {
+  if (process.platform !== 'win32') return;
+
+  const scriptPath = path.join(__dirname, 'smtc_daemon.ps1');
+  if (!fs.existsSync(scriptPath)) {
+    console.warn('[Electron] smtc_daemon.ps1 not found at:', scriptPath);
+    return;
+  }
+
+  try {
+    smtcProcess = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+      {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }
+    );
+
+    let stdoutBuffer = '';
+    smtcProcess.stdout?.on('data', (chunk: Buffer) => {
+      stdoutBuffer += chunk.toString('utf-8');
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() || '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('{')) continue;
+        try {
+          const parsed = JSON.parse(trimmed);
+          currentMediaSession = parsed;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('media-session-update', parsed);
+          }
+        } catch {
+          // ignore transient JSON parse error
+        }
+      }
+    });
+
+    smtcProcess.on('exit', () => {
+      smtcProcess = null;
+    });
+  } catch (err) {
+    console.warn('[Electron] Failed to start SMTC daemon:', err);
+  }
+}
 
 // Window state management (remembers size, position, maximization)
 interface WindowState {
@@ -182,7 +241,25 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(() => {
+    // Intercept display media requests to enable seamless system audio loopback capture
+    session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+      try {
+        const sources = await desktopCapturer.getSources({ types: ['screen'] });
+        if (sources && sources.length > 0) {
+          callback({
+            video: sources[0],
+            audio: 'loopback',
+          });
+          return;
+        }
+      } catch (err) {
+        console.warn('[Electron] setDisplayMediaRequestHandler error:', err);
+      }
+      callback({});
+    });
+
     createWindow();
+    startSmtcDaemon();
 
     // Register Always-on-top global accelerator
     const toggleAOT = () => {
@@ -229,6 +306,38 @@ if (!gotTheLock) {
       if (mainWindow) mainWindow.close();
     });
 
+    ipcMain.handle('get-media-session', () => {
+      return currentMediaSession;
+    });
+
+    ipcMain.handle('safe-storage-encrypt', (_event, plaintext: string) => {
+      if (!plaintext) return '';
+      if (safeStorage.isEncryptionAvailable()) {
+        try {
+          return safeStorage.encryptString(plaintext).toString('base64');
+        } catch (e) {
+          console.warn('[Electron] safeStorage encryption failed:', e);
+        }
+      }
+      return Buffer.from(plaintext, 'utf-8').toString('base64');
+    });
+
+    ipcMain.handle('safe-storage-decrypt', (_event, ciphertext: string) => {
+      if (!ciphertext) return '';
+      if (safeStorage.isEncryptionAvailable()) {
+        try {
+          return safeStorage.decryptString(Buffer.from(ciphertext, 'base64'));
+        } catch (e) {
+          console.warn('[Electron] safeStorage decryption failed:', e);
+        }
+      }
+      try {
+        return Buffer.from(ciphertext, 'base64').toString('utf-8');
+      } catch {
+        return '';
+      }
+    });
+
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
@@ -238,6 +347,12 @@ if (!gotTheLock) {
 
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
+    if (smtcProcess) {
+      try {
+        smtcProcess.kill();
+      } catch {}
+      smtcProcess = null;
+    }
   });
 
   app.on('window-all-closed', () => {

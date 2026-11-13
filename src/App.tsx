@@ -33,6 +33,7 @@ import {
   DEFAULT_APPEARANCE_CONFIG,
 } from './services/appearanceConfig';
 import { DesktopModeBar } from './components/DesktopModeBar';
+import { systemAudioService, SystemAudioStatus } from './services/systemAudioService';
 
 function hexToRgb(hex: string): [number, number, number] {
   let c = hex.replace('#', '');
@@ -111,6 +112,10 @@ export const App: React.FC = () => {
   // Automatic Mode: 'lyrics' by default; fallback to 'ring' when no synced lyrics found
   const [visualizerMode, setVisualizerMode] = useState<'lyrics' | 'ring'>('lyrics');
   const [isSyncingLyrics, setIsSyncingLyrics] = useState(false);
+
+  // System Audio Source state
+  const [isSystemAudioActive, setIsSystemAudioActive] = useState(false);
+  const [systemAudioStatus, setSystemAudioStatus] = useState<SystemAudioStatus>('inactive');
 
   // Appearance Settings (Time, Date, Fonts, Lyrics) with live persistence
   const [appearanceConfig, setAppearanceConfig] = useState<AppearanceConfig>(loadStoredAppearance);
@@ -298,6 +303,12 @@ export const App: React.FC = () => {
     await audioManager.current.playUrl(track.audioUrl, true);
     setPlaybackState('playing');
 
+    if (systemAudioService.isActive()) {
+      systemAudioService.stopCapture();
+      setIsSystemAudioActive(false);
+      setSystemAudioStatus('inactive');
+    }
+
     setIsSyncingLyrics(true);
     const lyrics = await LrcService.fetchLyrics(track.title, track.artist, track.duration);
     setIsSyncingLyrics(false);
@@ -309,6 +320,109 @@ export const App: React.FC = () => {
       setVisualizerMode('ring');
     }
   }, []);
+
+  // System Audio handlers
+  const handleToggleSystemAudio = useCallback(async () => {
+    if (systemAudioService.isActive()) {
+      systemAudioService.stopCapture();
+      setIsSystemAudioActive(false);
+      setSystemAudioStatus('inactive');
+      showToast('System Audio disconnected');
+    } else {
+      try {
+        await systemAudioService.startCapture();
+        setIsSystemAudioActive(true);
+        setSystemAudioStatus('listening');
+        const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI?.isElectron;
+        showToast(isElectron ? 'Connected to System Audio' : 'Connected to Tab Audio');
+      } catch (err: any) {
+        setIsSystemAudioActive(false);
+        setSystemAudioStatus('error');
+        showToast(err.message || 'Could not connect audio stream');
+      }
+    }
+  }, [showToast]);
+
+  const handleSetManualTrack = useCallback(async (title: string, artist: string) => {
+    systemAudioService.setManualTrack(title, artist);
+    setIsSyncingLyrics(true);
+    const lyrics = await LrcService.fetchLyrics(title, artist);
+    setIsSyncingLyrics(false);
+    const newTrk: MusicTrack = {
+      id: `sys_manual_${title}_${artist}`,
+      title,
+      artist,
+      duration: 180,
+      audioUrl: '',
+      rawLrc: lyrics || undefined,
+      primaryColor: '#ffffff',
+      secondaryColor: '#94a3b8',
+      accentGlow: 'rgba(255, 255, 255, 0.75)',
+    };
+    setTracks([newTrk]);
+    setTrackIndex(0);
+    setVisualizerMode(lyrics && LrcService.hasSyncedTimestamps(lyrics) ? 'lyrics' : 'ring');
+    showToast(`Loaded lyrics for "${title}"`);
+  }, [showToast]);
+
+  // System Audio Subscriptions & Desktop Auto-Start
+  useEffect(() => {
+    // In desktop app, default to System Audio source
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.isElectron) {
+      systemAudioService
+        .startCapture()
+        .then(() => {
+          setIsSystemAudioActive(true);
+          setSystemAudioStatus('listening');
+        })
+        .catch((err) => {
+          console.warn('[App] Auto-start system audio skipped:', err);
+        });
+    }
+
+    const unsubStatus = systemAudioService.onStatusChange((status, errMsg) => {
+      setSystemAudioStatus(status);
+      if (errMsg) showToast(errMsg);
+    });
+
+    const unsubSong = systemAudioService.onSongChange(async (song) => {
+      if (!song) return;
+
+      setIsSyncingLyrics(true);
+      const lyrics = await LrcService.fetchLyrics(song.title, song.artist, song.duration);
+      setIsSyncingLyrics(false);
+
+      const newTrk: MusicTrack = {
+        id: `sys_${song.title}_${song.artist}`,
+        title: song.title,
+        artist: song.artist,
+        album: song.album,
+        duration: song.duration || 180,
+        audioUrl: '',
+        rawLrc: lyrics || undefined,
+        primaryColor: '#ffffff',
+        secondaryColor: '#94a3b8',
+        accentGlow: 'rgba(255, 255, 255, 0.75)',
+      };
+
+      setTracks([newTrk]);
+      setTrackIndex(0);
+      if (song.duration && song.duration > 0) {
+        setDuration(song.duration);
+      }
+      setVisualizerMode(lyrics && LrcService.hasSyncedTimestamps(lyrics) ? 'lyrics' : 'ring');
+    });
+
+    const unsubNotice = systemAudioService.onNotice((msg) => {
+      showToast(msg);
+    });
+
+    return () => {
+      unsubStatus();
+      unsubSong();
+      unsubNotice();
+    };
+  }, [showToast]);
 
   const handleUpdateAppearance = useCallback((updated: Partial<AppearanceConfig>) => {
     setAppearanceConfig((prev) => {
@@ -488,12 +602,21 @@ export const App: React.FC = () => {
       }
 
       if (timestamp - lastTimeUpdate > 200) {
-        const time = mgr.getAcousticTime();
-        setCurrentTime(time);
+        if (systemAudioService.isActive()) {
+          const sysPos = systemAudioService.getEstimatedPosition();
+          setCurrentTime(sysPos);
+          const curSong = systemAudioService.getCurrentSong();
+          if (curSong?.duration && curSong.duration > 0 && curSong.duration !== duration) {
+            setDuration(curSong.duration);
+          }
+        } else {
+          const time = mgr.getAcousticTime();
+          setCurrentTime(time);
 
-        const dur = mgr.getDuration();
-        if (dur > 0 && dur !== duration) {
-          setDuration(dur);
+          const dur = mgr.getDuration();
+          if (dur > 0 && dur !== duration) {
+            setDuration(dur);
+          }
         }
         lastTimeUpdate = timestamp;
       }
@@ -662,6 +785,11 @@ export const App: React.FC = () => {
 
   // Load user's local audio file: extracts ID3 tags and queries LRCLIB
   const handleLoadLocalAudio = useCallback(async (file: File) => {
+    if (systemAudioService.isActive()) {
+      systemAudioService.stopCapture();
+      setIsSystemAudioActive(false);
+      setSystemAudioStatus('inactive');
+    }
     const objectUrl = URL.createObjectURL(file);
     setIsSyncingLyrics(true);
 
@@ -714,6 +842,11 @@ export const App: React.FC = () => {
 
   // Load Audius online track with automatic LRCLIB matching
   const handleSelectAudiusTrack = useCallback(async (item: AudiusTrackItem) => {
+    if (systemAudioService.isActive()) {
+      systemAudioService.stopCapture();
+      setIsSystemAudioActive(false);
+      setSystemAudioStatus('inactive');
+    }
     console.log(`[Audius] Direct stream selected: "${item.title}" by ${item.artist} (${item.duration}s)`);
     setIsSyncingLyrics(true);
 
@@ -838,7 +971,11 @@ export const App: React.FC = () => {
         playbackState={playbackState}
         colorRgb={ambientColorRgb}
         accentRgbRef={accentRgbRef}
-        intensity={colorConfig.intensity}
+        intensity={
+          isSystemAudioActive && (systemAudioStatus === 'silence' || isMuted)
+            ? colorConfig.intensity * 0.25
+            : colorConfig.intensity
+        }
         autoCycle={colorConfig.mode === 'autocycle'}
       />
 
@@ -926,6 +1063,10 @@ export const App: React.FC = () => {
             onOpenAddToPlaylist={handleOpenAddToPlaylist}
             isTrackFavorited={isCurrentTrackFavorited}
             onToggleFavorite={handleToggleFavorite}
+            isSystemAudioActive={isSystemAudioActive}
+            systemAudioStatus={systemAudioStatus}
+            onToggleSystemAudio={handleToggleSystemAudio}
+            onSetManualTrack={handleSetManualTrack}
             onMouseEnter={() => {
               setIsHoveringDrawer(true);
               if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);

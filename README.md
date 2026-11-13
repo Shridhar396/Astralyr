@@ -65,6 +65,33 @@ Open the hosted live version at:
 
 ---
 
+## 🎧 Works with Spotify, YouTube & Apple Music
+
+Constella captures system loopback audio so that whatever music is playing on your machine—from Spotify, Apple Music, YouTube Music, Tidal, or browser tabs—drives the ambient starlight constellations and beat-reactive rim lighting in real time.
+
+### How It Works:
+1. **Loopback Audio Capture**:
+   - In the **Desktop App** (Windows, macOS, Linux), Constella captures system audio through an internal audio loopback stream piped directly into Web Audio's `AnalyserNode`.
+   - In the **Web App**, click **"Share a tab"** and pick any audio-playing tab or window (make sure to tick *"Also share tab audio"*).
+2. **Song Identification**:
+   - **Media Session (Automatic)**: Reads the OS media session (e.g. Windows SMTC) every 250ms for song title, artist, album, duration, and playback position.
+   - **Audio Fingerprinting (Opt-in)**: If the media session provides no metadata and fingerprinting is enabled in Appearance/Settings, Constella records an ephemeral 10–12 second clip in memory and identifies the song via AudD or ACRCloud.
+   - **Manual Fallback**: If both are unavailable, click **"Search Song"** in the bottom drawer to manually set title and artist for LRCLIB lyrics lookup while continuing system audio capture.
+3. **Synchronized Lyrics**:
+   - Constella matches the identified song with [LRCLIB](https://lrclib.net).
+   - If synced lyrics exist, word-level constellation animations sync directly to the media session's playback position.
+   - If no lyrics are found or for unknown remixes, Constella gracefully falls back to the ambient audio ring visualizer.
+
+### 🔒 Privacy Statement:
+> Constella **never records, saves, uploads, or re-streams your audio**. System audio is analyzed purely in memory (RAM) through local Web Audio Fast Fourier Transform (FFT) nodes. If audio fingerprinting is explicitly enabled, only a temporary 10-second sample is sent directly to your chosen provider (AudD or ACRCloud) with your personal API key and deleted immediately.
+
+### 💻 OS Setup Notes:
+- **Windows**: Works automatically out-of-the-box using Windows System Audio Loopback and Windows SMTC.
+- **macOS**: Supported natively on macOS 13+ via ScreenCaptureKit loopback, or with virtual loopback drivers such as [BlackHole](https://github.com/ExistentialAudio/BlackHole).
+- **Linux**: Supported via PulseAudio or PipeWire monitor sources.
+
+---
+
 ## 🎵 How Now Playing Works
 
 1. **Audio Sources**:

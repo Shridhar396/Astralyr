@@ -11,7 +11,7 @@
     "build": "tsc && vite build",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "build:electron": "tsc -p tsconfig.electron.json && node -e \"require('fs').writeFileSync('dist-electron/package.json', JSON.stringify({type: 'commonjs'}))\"",
+    "build:electron": "tsc -p tsconfig.electron.json && node -e \"const fs = require('fs'); fs.writeFileSync('dist-electron/package.json', JSON.stringify({type: 'commonjs'})); if (fs.existsSync('electron/smtc_daemon.ps1')) fs.copyFileSync('electron/smtc_daemon.ps1', 'dist-electron/smtc_daemon.ps1');\"",
     "electron:dev": "npm run build:electron && electron .",
     "electron:build": "tsc && vite build --base=./ && npm run build:electron && electron-builder",
     "preview": "vite preview",
