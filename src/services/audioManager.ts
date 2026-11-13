@@ -275,6 +275,13 @@ export class AudioManager {
     }
   }
 
+  public pause(): void {
+    if (this.audio) {
+      this.audio.pause();
+    }
+    this.setPlaybackState('paused');
+  }
+
   public seek(seconds: number): void {
     if (this.audio && !isNaN(this.audio.duration) && isFinite(this.audio.duration)) {
       this.audio.currentTime = seconds;

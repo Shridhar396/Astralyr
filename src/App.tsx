@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { DEMO_TRACKS, LrcService } from './services/lrcService';
+import { DEMO_TRACKS, LrcService, ParsedTabHint } from './services/lrcService';
 import { Id3Parser } from './services/id3Parser';
 import { MusicTrack, LyricLine } from './types/lyrics';
 import { AudiusTrackItem } from './services/musicSearchService';
@@ -33,7 +33,14 @@ import {
   DEFAULT_APPEARANCE_CONFIG,
 } from './services/appearanceConfig';
 import { DesktopModeBar } from './components/DesktopModeBar';
-import { systemAudioService, SystemAudioStatus } from './services/systemAudioService';
+import { systemAudioService, SystemAudioStatus, IdentifiedSong } from './services/systemAudioService';
+
+function getSongSyncKey(title?: string, artist?: string): string | null {
+  if (!title || !title.trim()) return null;
+  const cleanT = title.toLowerCase().trim().replace(/[^\w]/g, '_');
+  const cleanA = (artist || '').toLowerCase().trim().replace(/[^\w]/g, '_');
+  return `constella_sync_${cleanT}_${cleanA}`;
+}
 
 function hexToRgb(hex: string): [number, number, number] {
   let c = hex.replace('#', '');
@@ -116,56 +123,69 @@ export const App: React.FC = () => {
   // System Audio Source state
   const [isSystemAudioActive, setIsSystemAudioActive] = useState(false);
   const [systemAudioStatus, setSystemAudioStatus] = useState<SystemAudioStatus>('inactive');
+  const [identifiedSong, setIdentifiedSong] = useState<IdentifiedSong | null>(null);
+  const [songHint, setSongHint] = useState<ParsedTabHint | null>(null);
+  const [isFingerprinting, setIsFingerprinting] = useState(false);
 
   // Appearance Settings (Time, Date, Fonts, Lyrics) with live persistence
   const [appearanceConfig, setAppearanceConfig] = useState<AppearanceConfig>(loadStoredAppearance);
   const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
+  const [initialAppearanceTab, setInitialAppearanceTab] = useState<'presets' | 'time' | 'date' | 'lyrics' | 'system-audio' | undefined>(undefined);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
 
-  // Manual Sync Offset in seconds (-0.5s, 0.0s, +0.5s) per track with persistence
-  const [syncOffset, setSyncOffset] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem(`sync_offset_${currentTrack?.id}`) || localStorage.getItem('sync_offset');
-      return saved ? parseFloat(saved) || 0 : 0;
-    } catch {
-      return 0;
-    }
-  });
+  // Manual Sync Offset in seconds (-0.5s, 0.0s, +0.5s) per track with per-song persistence
+  const [syncOffset, setSyncOffset] = useState<number>(0);
 
   const syncOffsetRef = useRef(syncOffset);
   syncOffsetRef.current = syncOffset;
 
-  // Restore sync offset on track change
+  // Restore sync offset on track change:
+  // - Purges any legacy global offset
+  // - Restores per-song offset if present
+  // - Defaults to 0.0s for any new song
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(`sync_offset_${currentTrack?.id}`);
-      if (saved !== null) {
-        setSyncOffset(parseFloat(saved) || 0);
-      } else {
-        const globalSaved = localStorage.getItem('sync_offset');
-        setSyncOffset(globalSaved ? parseFloat(globalSaved) || 0 : 0);
-      }
+      localStorage.removeItem('sync_offset');
     } catch {}
-  }, [currentTrack?.id]);
+
+    const key = getSongSyncKey(currentTrack?.title, currentTrack?.artist);
+    if (key) {
+      try {
+        const saved = localStorage.getItem(key);
+        if (saved !== null) {
+          const parsed = parseFloat(saved);
+          if (!isNaN(parsed)) {
+            setSyncOffset(parsed);
+            return;
+          }
+        }
+      } catch {}
+    }
+    setSyncOffset(0);
+  }, [currentTrack?.title, currentTrack?.artist]);
 
   const handleAdjustOffset = useCallback((delta: number) => {
     setSyncOffset((prev) => {
       const next = +(prev + delta).toFixed(2);
-      try {
-        localStorage.setItem(`sync_offset_${currentTrack?.id}`, String(next));
-        localStorage.setItem('sync_offset', String(next));
-      } catch {}
+      const key = getSongSyncKey(currentTrack?.title, currentTrack?.artist);
+      if (key) {
+        try {
+          localStorage.setItem(key, String(next));
+        } catch {}
+      }
       return next;
     });
-  }, [currentTrack?.id]);
+  }, [currentTrack?.title, currentTrack?.artist]);
 
   const handleResetOffset = useCallback(() => {
     setSyncOffset(0);
-    try {
-      localStorage.setItem(`sync_offset_${currentTrack?.id}`, '0');
-      localStorage.setItem('sync_offset', '0');
-    } catch {}
-  }, [currentTrack?.id]);
+    const key = getSongSyncKey(currentTrack?.title, currentTrack?.artist);
+    if (key) {
+      try {
+        localStorage.removeItem(key);
+      } catch {}
+    }
+  }, [currentTrack?.title, currentTrack?.artist]);
 
   // Library & Playlists State (IndexedDB)
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -326,18 +346,38 @@ export const App: React.FC = () => {
     if (systemAudioService.isActive()) {
       systemAudioService.stopCapture();
       setIsSystemAudioActive(false);
+      setIdentifiedSong(null);
+      setSongHint(null);
       setSystemAudioStatus('inactive');
+      setTracks(DEMO_TRACKS);
+      setTrackIndex(0);
+      setDuration(DEMO_TRACKS[0].duration || 40);
+      setVisualizerMode('lyrics');
+      setSyncOffset(0);
       showToast('System Audio disconnected');
     } else {
       try {
-        await systemAudioService.startCapture();
+        // Pause any local audio playback
+        audioManager.current.pause();
+        setPlaybackState('idle');
+
+        // Immediately enter unidentified listening mode so demo track is never shown
         setIsSystemAudioActive(true);
+        setIdentifiedSong(null);
+        setSongHint(null);
+        setVisualizerMode('ring');
+
+        await systemAudioService.startCapture();
         setSystemAudioStatus('listening');
         const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI?.isElectron;
         showToast(isElectron ? 'Connected to System Audio' : 'Connected to Tab Audio');
       } catch (err: any) {
         setIsSystemAudioActive(false);
+        setIdentifiedSong(null);
+        setSongHint(null);
         setSystemAudioStatus('error');
+        setTracks(DEMO_TRACKS);
+        setVisualizerMode('lyrics');
         showToast(err.message || 'Could not connect audio stream');
       }
     }
@@ -345,13 +385,25 @@ export const App: React.FC = () => {
 
   const handleSetManualTrack = useCallback(async (title: string, artist: string) => {
     systemAudioService.setManualTrack(title, artist);
+    const manualSong: IdentifiedSong = {
+      title,
+      artist: artist || 'Unknown Artist',
+      duration: 180,
+      position: 0,
+      source: 'manual',
+      playbackStatus: 'Playing',
+      lastUpdated: Date.now(),
+    };
+    setIdentifiedSong(manualSong);
+
     setIsSyncingLyrics(true);
     const lyrics = await LrcService.fetchLyrics(title, artist);
     setIsSyncingLyrics(false);
+
     const newTrk: MusicTrack = {
       id: `sys_manual_${title}_${artist}`,
       title,
-      artist,
+      artist: artist || 'Unknown Artist',
       duration: 180,
       audioUrl: '',
       rawLrc: lyrics || undefined,
@@ -363,6 +415,34 @@ export const App: React.FC = () => {
     setTrackIndex(0);
     setVisualizerMode(lyrics && LrcService.hasSyncedTimestamps(lyrics) ? 'lyrics' : 'ring');
     showToast(`Loaded lyrics for "${title}"`);
+  }, [showToast]);
+
+  const handleAcceptHint = useCallback(
+    async (hint: ParsedTabHint) => {
+      await handleSetManualTrack(hint.title, hint.artist);
+      systemAudioService.clearHint();
+      setSongHint(null);
+    },
+    [handleSetManualTrack]
+  );
+
+  const handleRejectHintToSearch = useCallback((hint: ParsedTabHint) => {
+    systemAudioService.clearHint();
+    setSongHint(null);
+  }, []);
+
+  const handleIdentifyByAudio = useCallback(async () => {
+    setIsFingerprinting(true);
+    try {
+      const res = await systemAudioService.triggerFingerprint();
+      if (!res) {
+        showToast('Could not identify song from audio clip.');
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Fingerprint recognition error');
+    } finally {
+      setIsFingerprinting(false);
+    }
   }, [showToast]);
 
   // System Audio Subscriptions & Desktop Auto-Start
@@ -382,11 +462,25 @@ export const App: React.FC = () => {
 
     const unsubStatus = systemAudioService.onStatusChange((status, errMsg) => {
       setSystemAudioStatus(status);
+      if (status === 'inactive') {
+        setIsSystemAudioActive(false);
+        setIdentifiedSong(null);
+        setSongHint(null);
+        setTracks(DEMO_TRACKS);
+        setTrackIndex(0);
+        setDuration(DEMO_TRACKS[0].duration || 40);
+        setVisualizerMode('lyrics');
+        setSyncOffset(0);
+      }
       if (errMsg) showToast(errMsg);
     });
 
     const unsubSong = systemAudioService.onSongChange(async (song) => {
-      if (!song) return;
+      if (!song) {
+        setIdentifiedSong(null);
+        return;
+      }
+      setIdentifiedSong(song);
 
       setIsSyncingLyrics(true);
       const lyrics = await LrcService.fetchLyrics(song.title, song.artist, song.duration);
@@ -413,6 +507,10 @@ export const App: React.FC = () => {
       setVisualizerMode(lyrics && LrcService.hasSyncedTimestamps(lyrics) ? 'lyrics' : 'ring');
     });
 
+    const unsubHint = systemAudioService.onSongHint((hint) => {
+      setSongHint(hint);
+    });
+
     const unsubNotice = systemAudioService.onNotice((msg) => {
       showToast(msg);
     });
@@ -420,9 +518,30 @@ export const App: React.FC = () => {
     return () => {
       unsubStatus();
       unsubSong();
+      unsubHint();
       unsubNotice();
     };
   }, [showToast]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__CONSTELLA__ = {
+        setManualTrack: handleSetManualTrack,
+        toggleSystemAudio: handleToggleSystemAudio,
+        simulateTabShare: (label: string) => {
+          setIsSystemAudioActive(true);
+          setIdentifiedSong(null);
+          setVisualizerMode('ring');
+          systemAudioService.simulateActiveCapture(label);
+        },
+        setSyncOffset,
+        getSyncOffset: () => syncOffset,
+        getCurrentTrack: () => currentTrack,
+        getIdentifiedSong: () => identifiedSong,
+        getVisualizerMode: () => visualizerMode,
+      };
+    }
+  }, [handleSetManualTrack, handleToggleSystemAudio, syncOffset, currentTrack, identifiedSong, visualizerMode]);
 
   const handleUpdateAppearance = useCallback((updated: Partial<AppearanceConfig>) => {
     setAppearanceConfig((prev) => {
@@ -554,26 +673,33 @@ export const App: React.FC = () => {
   });
 
   // Accurate audio time getter compensated for audio hardware output device buffer latency + user sync offset
-  const getAcousticTime = useCallback(
-    () => Math.max(0, audioManager.current.getAcousticTime() + syncOffsetRef.current),
-    []
-  );
+  const getAcousticTime = useCallback(() => {
+    if (isSystemAudioActive) {
+      return Math.max(0, systemAudioService.getEstimatedPosition() + syncOffsetRef.current);
+    }
+    return Math.max(0, audioManager.current.getAcousticTime() + syncOffsetRef.current);
+  }, [isSystemAudioActive]);
 
   // Parsed Lyric Lines from currentTrack.rawLrc
   const lyricLines: LyricLine[] = useMemo(() => {
+    if (isSystemAudioActive && !identifiedSong) return [];
     if (!currentTrack.rawLrc || currentTrack.rawLrc.trim().length === 0) return [];
     return LrcService.parseLrc(currentTrack.rawLrc, duration);
-  }, [currentTrack.rawLrc, duration]);
+  }, [currentTrack.rawLrc, duration, isSystemAudioActive, identifiedSong]);
 
   // Update visualizerMode automatically whenever the track or its lyrics change
   useEffect(() => {
+    if (isSystemAudioActive && !identifiedSong) {
+      setVisualizerMode('ring');
+      return;
+    }
     const hasLyrics = Boolean(
       currentTrack.rawLrc &&
         currentTrack.rawLrc.trim().length > 0 &&
         LrcService.hasSyncedTimestamps(currentTrack.rawLrc)
     );
     setVisualizerMode(hasLyrics ? 'lyrics' : 'ring');
-  }, [currentTrack.rawLrc]);
+  }, [currentTrack.rawLrc, isSystemAudioActive, identifiedSong]);
 
   // Audio manager setup & throttled RAF loop
   useEffect(() => {
@@ -927,9 +1053,9 @@ export const App: React.FC = () => {
       } else if (e.code === 'ArrowLeft') {
         handlePrevTrack();
       } else if (e.key === '[') {
-        handleAdjustOffset(-0.25);
+        handleAdjustOffset(-0.5);
       } else if (e.key === ']') {
-        handleAdjustOffset(0.25);
+        handleAdjustOffset(0.5);
       } else if (e.key === '\\') {
         handleResetOffset();
       } else if (e.code === 'KeyL') {
@@ -1057,7 +1183,14 @@ export const App: React.FC = () => {
             onToggleMute={handleToggleMute}
             onLoadLocalAudio={handleLoadLocalAudio}
             onSelectAudiusTrack={handleSelectAudiusTrack}
-            onOpenAppearance={() => setIsAppearanceOpen(true)}
+            onOpenAppearance={() => {
+              setInitialAppearanceTab(undefined);
+              setIsAppearanceOpen(true);
+            }}
+            onOpenAppearanceTab={(tab) => {
+              setInitialAppearanceTab(tab);
+              setIsAppearanceOpen(true);
+            }}
             onOpenAbout={() => setIsAboutOpen(true)}
             onOpenLibrary={() => setIsLibraryOpen(true)}
             onOpenAddToPlaylist={handleOpenAddToPlaylist}
@@ -1065,8 +1198,15 @@ export const App: React.FC = () => {
             onToggleFavorite={handleToggleFavorite}
             isSystemAudioActive={isSystemAudioActive}
             systemAudioStatus={systemAudioStatus}
+            hasIdentifiedSong={Boolean(identifiedSong)}
+            songHint={songHint}
+            onAcceptHint={handleAcceptHint}
+            onRejectHintToSearch={handleRejectHintToSearch}
             onToggleSystemAudio={handleToggleSystemAudio}
             onSetManualTrack={handleSetManualTrack}
+            onIdentifyByAudio={handleIdentifyByAudio}
+            isFingerprinting={isFingerprinting}
+            isFingerprintEnabled={systemAudioService.getConfig().enabled}
             onMouseEnter={() => {
               setIsHoveringDrawer(true);
               if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
@@ -1083,6 +1223,13 @@ export const App: React.FC = () => {
           {isSyncingLyrics ? (
             <div className="text-[12px] font-normal text-white/60 tracking-wide mb-1 antialiased animate-pulse">
               Syncing lyrics...
+            </div>
+          ) : isSystemAudioActive && !identifiedSong ? (
+            <div className="text-[12px] font-normal text-white/40 tracking-wider antialiased">
+              {typeof window !== 'undefined' && (window as any).electronAPI?.isElectron
+                ? 'System Audio'
+                : 'Tab Audio'}{' '}
+              — Listening…
             </div>
           ) : visualizerMode === 'ring' ? (
             <div className="text-[12px] font-normal text-white/45 tracking-wide mb-1 antialiased">
@@ -1103,6 +1250,7 @@ export const App: React.FC = () => {
         config={appearanceConfig}
         onUpdateConfig={handleUpdateAppearance}
         onResetDefault={handleResetAppearance}
+        initialTab={initialAppearanceTab}
       />
 
       {/* About Constella Dialog */}

@@ -25,6 +25,7 @@ import {
 import { MusicTrack } from '../types/lyrics';
 import { PlaybackState } from '../types/radio';
 import { MusicSearchService, AudiusTrackItem } from '../services/musicSearchService';
+import { ParsedTabHint } from '../services/lrcService';
 
 export type AmbientColorMode = 'preset' | 'album' | 'autocycle' | 'custom';
 
@@ -68,6 +69,7 @@ interface BottomTrackPillProps {
   onLoadLocalAudio: (file: File) => void;
   onSelectAudiusTrack: (track: AudiusTrackItem) => void;
   onOpenAppearance?: () => void;
+  onOpenAppearanceTab?: (tab: 'presets' | 'time' | 'date' | 'lyrics' | 'system-audio') => void;
   onOpenAbout?: () => void;
   onOpenLibrary?: () => void;
   onOpenAddToPlaylist?: (track: MusicTrack | AudiusTrackItem) => void;
@@ -75,8 +77,15 @@ interface BottomTrackPillProps {
   onToggleFavorite?: () => void;
   isSystemAudioActive?: boolean;
   systemAudioStatus?: 'inactive' | 'listening' | 'silence' | 'error';
+  hasIdentifiedSong?: boolean;
+  songHint?: ParsedTabHint | null;
+  onAcceptHint?: (hint: ParsedTabHint) => void;
+  onRejectHintToSearch?: (hint: ParsedTabHint) => void;
   onToggleSystemAudio?: () => void;
   onSetManualTrack?: (title: string, artist: string) => void;
+  onIdentifyByAudio?: () => void;
+  isFingerprinting?: boolean;
+  isFingerprintEnabled?: boolean;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
 }
@@ -102,6 +111,7 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
   onLoadLocalAudio,
   onSelectAudiusTrack,
   onOpenAppearance,
+  onOpenAppearanceTab,
   onOpenAbout,
   onOpenLibrary,
   onOpenAddToPlaylist,
@@ -109,8 +119,15 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
   onToggleFavorite,
   isSystemAudioActive = false,
   systemAudioStatus = 'inactive',
+  hasIdentifiedSong = false,
+  songHint = null,
+  onAcceptHint,
+  onRejectHintToSearch,
   onToggleSystemAudio,
   onSetManualTrack,
+  onIdentifyByAudio,
+  isFingerprinting = false,
+  isFingerprintEnabled = false,
   onMouseEnter,
   onMouseLeave,
 }) => {
@@ -346,65 +363,143 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
           boxShadow: '0 20px 50px rgba(0, 0, 0, 0.95), 0 0 1px 1px rgba(255, 255, 255, 0.1)',
         }}
       >
-        {/* Top Header Row: Track Info & Duration */}
-        <div className="flex items-center justify-between mb-2.5">
-          <div className="flex items-center space-x-2.5 min-w-0 pr-3">
-            <span className="text-white/80 text-sm">✦</span>
-            <div className="truncate flex items-center">
-              <span className="text-[13px] font-semibold text-white tracking-tight mr-2 truncate">
-                {currentTrack.title}
-              </span>
-              <span className="text-[12px] font-normal text-white/50 truncate">
-                {currentTrack.artist}
+        {/* Suggestion Card for Tab Hint */}
+        {isSystemAudioActive && !hasIdentifiedSong && songHint && (
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-cyan-950/60 border border-cyan-400/30 text-xs mb-3 shadow-lg animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="flex items-center space-x-2 truncate mr-2">
+              <Sparkles className="w-4 h-4 text-cyan-300 flex-shrink-0 animate-pulse" />
+              <span className="text-white/90 truncate">
+                Is it <strong className="text-white font-semibold">{songHint.artist} – {songHint.title}</strong>?
               </span>
             </div>
-
-            {/* Quick Favorite / Add to Playlist buttons */}
-            <div className="flex items-center space-x-1 pl-1 flex-shrink-0">
-              {onToggleFavorite && (
-                <button
-                  onClick={onToggleFavorite}
-                  className={`p-1 rounded-lg transition-colors ${
-                    isTrackFavorited
-                      ? 'text-red-400 hover:text-red-300'
-                      : 'text-white/30 hover:text-white/80 hover:bg-white/10'
-                  }`}
-                  title={isTrackFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
-                >
-                  <Heart className={`w-3.5 h-3.5 ${isTrackFavorited ? 'fill-current' : ''}`} />
-                </button>
-              )}
-              {onOpenAddToPlaylist && (
-                <button
-                  onClick={() => onOpenAddToPlaylist(currentTrack)}
-                  className="p-1 rounded-lg text-white/30 hover:text-white/80 hover:bg-white/10 transition-colors"
-                  title="Add to Playlist…"
-                >
-                  <FolderPlus className="w-3.5 h-3.5" />
-                </button>
-              )}
+            <div className="flex items-center space-x-1.5 flex-shrink-0">
+              <button
+                onClick={() => onAcceptHint?.(songHint)}
+                className="px-2.5 py-1 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-black font-semibold text-xs transition-colors shadow active:scale-95"
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => {
+                  setManualTitle(songHint.title);
+                  setManualArtist(songHint.artist);
+                  setShowManualSearch(true);
+                  onRejectHintToSearch?.(songHint);
+                }}
+                className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-xs transition-colors"
+              >
+                Search instead
+              </button>
             </div>
           </div>
+        )}
 
-          <div className="text-[11px] font-mono text-white/50 flex-shrink-0">
-            <span>{formatTime(currentTime)}</span>
-            <span className="mx-1 text-white/30">/</span>
-            <span>{formatTime(duration)}</span>
+        {/* Unidentified System Audio State: "Listening… which song is this?" */}
+        {isSystemAudioActive && !hasIdentifiedSong ? (
+          <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 mb-3">
+            <div className="flex items-center space-x-2 min-w-0 mr-2">
+              <Radio className="w-3.5 h-3.5 text-cyan-300 animate-pulse flex-shrink-0" />
+              <span className="text-[12px] font-medium text-white/90 truncate">
+                Listening… which song is this?
+              </span>
+            </div>
+            <div className="flex items-center space-x-2 flex-shrink-0">
+              <button
+                onClick={() => setShowManualSearch(true)}
+                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors"
+              >
+                Search song
+              </button>
+              <button
+                onClick={() => {
+                  if (isFingerprintEnabled) {
+                    onIdentifyByAudio?.();
+                  } else {
+                    onOpenAppearanceTab?.('system-audio');
+                  }
+                }}
+                disabled={isFingerprinting}
+                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors flex items-center space-x-1"
+                title={
+                  isFingerprintEnabled
+                    ? 'Identify playing song with audio recognition'
+                    : 'Enable audio fingerprinting in Settings'
+                }
+              >
+                {isFingerprinting && <Loader2 className="w-3 h-3 animate-spin mr-1 text-cyan-300" />}
+                <span>
+                  {isFingerprinting
+                    ? 'Identifying…'
+                    : isFingerprintEnabled
+                    ? 'Identify by audio'
+                    : 'Identify by audio (Enable in Settings)'}
+                </span>
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <>
+            {/* Top Header Row: Track Info & Duration */}
+            <div className="flex items-center justify-between mb-2.5">
+              <div className="flex items-center space-x-2.5 min-w-0 pr-3">
+                <span className="text-white/80 text-sm">✦</span>
+                <div className="truncate flex items-center">
+                  <span className="text-[13px] font-semibold text-white tracking-tight mr-2 truncate">
+                    {currentTrack.title}
+                  </span>
+                  <span className="text-[12px] font-normal text-white/50 truncate">
+                    {currentTrack.artist}
+                  </span>
+                </div>
 
-        {/* Timeline Scrubber */}
-        <div className="space-y-1 mb-3">
-          <input
-            type="range"
-            min="0"
-            max={duration || 100}
-            step="0.5"
-            value={currentTime}
-            onChange={(e) => onSeek(parseFloat(e.target.value))}
-            className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white hover:bg-white/30 transition-all"
-          />
-        </div>
+                {/* Quick Favorite / Add to Playlist buttons */}
+                <div className="flex items-center space-x-1 pl-1 flex-shrink-0">
+                  {onToggleFavorite && (
+                    <button
+                      onClick={onToggleFavorite}
+                      className={`p-1 rounded-lg transition-colors ${
+                        isTrackFavorited
+                          ? 'text-red-400 hover:text-red-300'
+                          : 'text-white/30 hover:text-white/80 hover:bg-white/10'
+                      }`}
+                      title={isTrackFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
+                    >
+                      <Heart className={`w-3.5 h-3.5 ${isTrackFavorited ? 'fill-current' : ''}`} />
+                    </button>
+                  )}
+                  {onOpenAddToPlaylist && (
+                    <button
+                      onClick={() => onOpenAddToPlaylist(currentTrack)}
+                      className="p-1 rounded-lg text-white/30 hover:text-white/80 hover:bg-white/10 transition-colors"
+                      title="Add to Playlist…"
+                    >
+                      <FolderPlus className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-[11px] font-mono text-white/50 flex-shrink-0">
+                <span>{formatTime(currentTime)}</span>
+                <span className="mx-1 text-white/30">/</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+            </div>
+
+            {/* Timeline Scrubber */}
+            <div className="space-y-1 mb-3">
+              <input
+                type="range"
+                min="0"
+                max={duration || 100}
+                step="0.5"
+                value={currentTime}
+                onChange={(e) => onSeek(parseFloat(e.target.value))}
+                className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white hover:bg-white/30 transition-all"
+              />
+            </div>
+          </>
+        )}
 
         {/* Transport Controls & Tools Bar */}
         <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
@@ -455,10 +550,12 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
               </button>
               <button
                 onClick={onResetOffset}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-all ${
-                  syncOffset !== 0 ? 'text-white bg-white/25 font-semibold' : 'text-white/40'
+                className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-all cursor-pointer ${
+                  syncOffset !== 0
+                    ? 'text-white bg-white/25 font-semibold hover:bg-white/30'
+                    : 'text-white/40 hover:text-white/70'
                 }`}
-                title="Reset sync offset to 0.0s (\)"
+                title={syncOffset !== 0 ? 'Click to reset sync offset to 0.0s (\\)' : 'Sync offset: 0.0s'}
               >
                 {syncOffset === 0 ? '0.0s' : `${syncOffset > 0 ? '+' : ''}${syncOffset.toFixed(1)}s`}
               </button>

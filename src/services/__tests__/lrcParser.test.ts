@@ -24,4 +24,43 @@ describe('LrcService', () => {
     expect(LrcService.parseLrc('')).toEqual([]);
     expect(LrcService.parseLrc('Plain text without timestamps')).toEqual([]);
   });
+
+  describe('parseTabTitleHint', () => {
+    it('parses browser tab titles for YouTube videos like Sia - Snowman', () => {
+      const hint1 = LrcService.parseTabTitleHint('Tab (Sia - Snowman (Official Video))');
+      expect(hint1).toEqual({
+        rawLabel: 'Tab (Sia - Snowman (Official Video))',
+        artist: 'Sia',
+        title: 'Snowman',
+      });
+
+      const hint2 = LrcService.parseTabTitleHint('Sia - Snowman (Official Music Video) - YouTube');
+      expect(hint2).toEqual({
+        rawLabel: 'Sia - Snowman (Official Music Video) - YouTube',
+        artist: 'Sia',
+        title: 'Snowman',
+      });
+
+      const hint3 = LrcService.parseTabTitleHint('Tab (Sia – Snowman)');
+      expect(hint3).toEqual({
+        rawLabel: 'Tab (Sia – Snowman)',
+        artist: 'Sia',
+        title: 'Snowman',
+      });
+
+      const hint4 = LrcService.parseTabTitleHint('Snowman by Sia - YouTube');
+      expect(hint4).toEqual({
+        rawLabel: 'Snowman by Sia - YouTube',
+        artist: 'Sia',
+        title: 'Snowman',
+      });
+    });
+
+    it('rejects self app titles and non-music capture labels', () => {
+      expect(LrcService.parseTabTitleHint('Constella — your music, as a constellation')).toBeNull();
+      expect(LrcService.parseTabTitleHint('Entire Screen')).toBeNull();
+      expect(LrcService.parseTabTitleHint('')).toBeNull();
+      expect(LrcService.parseTabTitleHint(null)).toBeNull();
+    });
+  });
 });

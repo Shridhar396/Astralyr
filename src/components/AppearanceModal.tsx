@@ -32,6 +32,7 @@ interface AppearanceModalProps {
   config: AppearanceConfig;
   onUpdateConfig: (updated: Partial<AppearanceConfig>) => void;
   onResetDefault: () => void;
+  initialTab?: 'presets' | 'time' | 'date' | 'lyrics' | 'system-audio';
 }
 
 export const AppearanceModal: React.FC<AppearanceModalProps> = ({
@@ -40,6 +41,7 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
   config,
   onUpdateConfig,
   onResetDefault,
+  initialTab,
 }) => {
   const [activeTab, setActiveTab] = useState<'presets' | 'time' | 'date' | 'lyrics' | 'system-audio'>('presets');
   const [fpConfig, setFpConfig] = useState<FingerprintConfig>(() => systemAudioService.getConfig());
@@ -49,10 +51,13 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      if (initialTab) {
+        setActiveTab(initialTab);
+      }
       setFpConfig(systemAudioService.getConfig());
       setTestResult(null);
     }
-  }, [isOpen]);
+  }, [isOpen, initialTab]);
 
   const handleUpdateFp = (partial: Partial<FingerprintConfig>) => {
     const updated = { ...fpConfig, ...partial };

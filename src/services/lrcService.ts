@@ -5,6 +5,12 @@ export interface ParsedTrackInfo {
   title: string;
 }
 
+export interface ParsedTabHint {
+  rawLabel: string;
+  artist: string;
+  title: string;
+}
+
 export interface LrcMatchResult {
   syncedLyrics: string;
   trackName: string;
@@ -108,6 +114,84 @@ export class LrcService {
       artist: '',
       title: this.cleanTrackTitle(clean),
     };
+  }
+
+  /**
+   * Parses Artist and Title hint from a browser tab or window capture label (MediaStreamTrack.label).
+   * Supports YouTube tab titles like "Tab (Sia - Snowman (Official Video))", "Sia - Snowman - YouTube",
+   * "Snowman by Sia", etc.
+   */
+  public static parseTabTitleHint(label?: string | null): ParsedTabHint | null {
+    if (!label || typeof label !== 'string') return null;
+    let text = label.trim();
+    if (!text) return null;
+
+    // 1. Unwrap browser tab wrappers: "Tab (Title)", "Window (Title)", "tab:https://... - Title"
+    const tabWrapperMatch = text.match(/^Tab\s*\((.*)\)$/i) || text.match(/^Window\s*\((.*)\)$/i);
+    if (tabWrapperMatch) {
+      text = tabWrapperMatch[1].trim();
+    } else if (/^tab:\s*https?:\/\//i.test(text)) {
+      text = text.replace(/^tab:\s*https?:\/\/[^\s]+[\s\-–—]*/i, '').trim();
+    }
+
+    // 2. Strip browser / site suffixes:
+    // e.g. "- YouTube", "| YouTube", "– YouTube Music", "- Spotify", "- Google Chrome", "- Edge"
+    text = text
+      .replace(
+        /[\s\-–—|]+\s*(YouTube\s*Music|YouTube|Spotify(\s*Free)?|SoundCloud|Apple\s*Music|Google\s*Chrome|Microsoft\s*Edge|Brave|Firefox)\s*$/i,
+        ''
+      )
+      .trim();
+
+    // Strip leading track / video numbers like "1. ", "01 - "
+    text = text.replace(/^\s*\d{1,3}[\s.\-_–—]+\s*/, '').trim();
+
+    // If text starts with Constella (our own app), ignore it
+    if (/^constella/i.test(text)) return null;
+
+    let artist = '';
+    let title = '';
+
+    // Check pattern "Title by Artist"
+    const byMatch = text.match(/^(.*?)\s+by\s+(.*)$/i);
+    if (byMatch) {
+      title = this.cleanTrackTitle(byMatch[1]);
+      artist = this.cleanArtist(byMatch[2]);
+    } else {
+      // Check separators: " - ", " – ", " — ", " | "
+      const separators = [' - ', ' – ', ' — ', ' | '];
+      for (const sep of separators) {
+        if (text.includes(sep)) {
+          const parts = text.split(sep).map((p) => p.trim()).filter(Boolean);
+          if (parts.length >= 2) {
+            artist = this.cleanArtist(parts[0]);
+            title = this.cleanTrackTitle(parts.slice(1).join(' '));
+            break;
+          }
+        }
+      }
+    }
+
+    // Fallback: check colon "Artist: Title"
+    if ((!artist || !title) && text.includes(': ')) {
+      const parts = text.split(': ').map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        artist = this.cleanArtist(parts[0]);
+        title = this.cleanTrackTitle(parts.slice(1).join(' '));
+      }
+    }
+
+    // Check validity: both artist and title must have length >= 2 and not be generic terms
+    if (artist && title && artist.length >= 2 && title.length >= 2) {
+      if (/^(screen|display|window|desktop|audio|video|tab)\b/i.test(artist)) return null;
+      return {
+        rawLabel: label,
+        artist,
+        title,
+      };
+    }
+
+    return null;
   }
 
   /**

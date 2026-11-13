@@ -1,4 +1,5 @@
 import { AudioManager } from './audioManager';
+import { LrcService, ParsedTabHint } from './lrcService';
 
 export type SystemAudioStatus = 'inactive' | 'listening' | 'silence' | 'error';
 
@@ -38,6 +39,7 @@ export class SystemAudioService {
   private static instance: SystemAudioService | null = null;
   private status: SystemAudioStatus = 'inactive';
   private currentSong: IdentifiedSong | null = null;
+  private currentHint: ParsedTabHint | null = null;
   private currentStream: MediaStream | null = null;
   private statusInterval: number | null = null;
   private fingerprintTimer: number | null = null;
@@ -45,6 +47,7 @@ export class SystemAudioService {
 
   private statusListeners: Set<(status: SystemAudioStatus, errorMsg?: string) => void> = new Set();
   private songListeners: Set<(song: IdentifiedSong | null) => void> = new Set();
+  private songHintListeners: Set<(hint: ParsedTabHint | null) => void> = new Set();
   private noticeListeners: Set<(message: string) => void> = new Set();
 
   private config: FingerprintConfig = DEFAULT_FINGERPRINT_CONFIG;
@@ -181,10 +184,25 @@ export class SystemAudioService {
         } as any,
       });
 
-      // Stop video track immediately to save CPU and retain only audio
-      stream.getVideoTracks().forEach((track) => track.stop());
-
+      const videoTracks = stream.getVideoTracks();
       const audioTracks = stream.getAudioTracks();
+
+      // Attempt to extract tab title hint from video or audio track label BEFORE stopping video track
+      const rawLabel = videoTracks[0]?.label || audioTracks[0]?.label || '';
+      console.log('[SystemAudioService] Captured track rawLabel:', rawLabel);
+      const hint = LrcService.parseTabTitleHint(rawLabel);
+      if (hint) {
+        console.log('[SystemAudioService] Tab hint found:', hint);
+        this.currentHint = hint;
+        this.notifySongHintListeners(hint);
+      } else {
+        this.currentHint = null;
+        this.notifySongHintListeners(null);
+      }
+
+      // Stop video track immediately to save CPU and retain only audio
+      videoTracks.forEach((track) => track.stop());
+
       if (audioTracks.length === 0) {
         stream.getTracks().forEach((t) => t.stop());
         throw new Error(
@@ -242,10 +260,13 @@ export class SystemAudioService {
 
     AudioManager.getInstance().detachMediaStream();
 
+    this.currentHint = null;
+    this.notifySongHintListeners(null);
+    this.currentSong = null;
+    this.notifySongListeners(null);
+
     if (updateStatus) {
       this.setStatus('inactive');
-      this.currentSong = null;
-      this.notifySongListeners(null);
     }
   }
 
@@ -537,6 +558,40 @@ export class SystemAudioService {
     this.songListeners.forEach((fn) => fn(song));
   }
 
+  private notifySongHintListeners(hint: ParsedTabHint | null): void {
+    this.songHintListeners.forEach((fn) => fn(hint));
+  }
+
+  public getTabTitleHint(): ParsedTabHint | null {
+    return this.currentHint;
+  }
+
+  public setTabTitleHint(hint: ParsedTabHint | null): void {
+    this.currentHint = hint;
+    this.notifySongHintListeners(hint);
+  }
+
+  public clearHint(): void {
+    this.currentHint = null;
+    this.notifySongHintListeners(null);
+  }
+
+  public simulateActiveCapture(tabLabel?: string): void {
+    this.setStatus('listening');
+    if (tabLabel) {
+      const hint = LrcService.parseTabTitleHint(tabLabel);
+      if (hint) {
+        this.currentHint = hint;
+        this.notifySongHintListeners(hint);
+      }
+    }
+  }
+
+  public onSongHint(listener: (hint: ParsedTabHint | null) => void): () => void {
+    this.songHintListeners.add(listener);
+    return () => this.songHintListeners.delete(listener);
+  }
+
   private notifyNoticeListeners(msg: string): void {
     this.noticeListeners.forEach((fn) => fn(msg));
   }
@@ -566,3 +621,7 @@ export class SystemAudioService {
 }
 
 export const systemAudioService = SystemAudioService.getInstance();
+
+if (typeof window !== 'undefined') {
+  (window as any).systemAudioService = systemAudioService;
+}
