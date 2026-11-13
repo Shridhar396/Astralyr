@@ -10,13 +10,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimize: () => ipcRenderer.invoke('minimize-window'),
   maximize: () => ipcRenderer.invoke('maximize-window'),
   close: () => ipcRenderer.invoke('close-window'),
-  getMediaSession: () => ipcRenderer.invoke('get-media-session'),
-  onMediaSessionUpdate: (callback: (data: any) => void) => {
-    const handler = (_event: any, data: any) => callback(data);
-    ipcRenderer.on('media-session-update', handler);
-    return () => ipcRenderer.removeListener('media-session-update', handler);
+  library: {
+    importFiles: (filePaths: string[]) => ipcRenderer.invoke('library:import-files', filePaths),
+    selectAndImport: () => ipcRenderer.invoke('library:select-and-import'),
+    onImportProgress: (callback: (data: { current: number; total: number; filename: string }) => void) => {
+      const handler = (_event: any, data: any) => callback(data);
+      ipcRenderer.on('library:import-progress', handler);
+      return () => ipcRenderer.removeListener('library:import-progress', handler);
+    },
+    getStats: () => ipcRenderer.invoke('library:get-stats'),
+    openFolder: () => ipcRenderer.invoke('library:open-folder'),
+    verifyFiles: (tracks: any[]) => ipcRenderer.invoke('library:verify-files', tracks),
+    locateFile: (trackId: string) => ipcRenderer.invoke('library:locate-file', trackId),
+    deleteTrack: (trackId: string) => ipcRenderer.invoke('library:delete-track', trackId),
+    cleanupUnused: (activeTrackIds: string[]) => ipcRenderer.invoke('library:cleanup-unused', activeTrackIds),
+    exportBackup: () => ipcRenderer.invoke('library:export-backup'),
+    importBackup: () => ipcRenderer.invoke('library:import-backup'),
   },
-  encryptSecret: (plain: string) => ipcRenderer.invoke('safe-storage-encrypt', plain),
-  decryptSecret: (cipher: string) => ipcRenderer.invoke('safe-storage-decrypt', cipher),
 });
 

@@ -18,13 +18,16 @@ import {
   Calendar,
   Sparkles,
   Wand2,
-  Radio,
-  RefreshCw,
-  ShieldCheck,
   Check,
   AlertCircle,
+  FolderArchive,
+  HardDrive,
+  FolderOpen,
+  Trash2,
+  Download,
+  Upload,
 } from 'lucide-react';
-import { systemAudioService, FingerprintConfig } from '../services/systemAudioService';
+import { playlistDb } from '../services/playlistDb';
 
 interface AppearanceModalProps {
   isOpen: boolean;
@@ -32,7 +35,8 @@ interface AppearanceModalProps {
   config: AppearanceConfig;
   onUpdateConfig: (updated: Partial<AppearanceConfig>) => void;
   onResetDefault: () => void;
-  initialTab?: 'presets' | 'time' | 'date' | 'lyrics' | 'system-audio';
+  initialTab?: 'presets' | 'time' | 'date' | 'lyrics' | 'library';
+  onShowToast?: (message: string) => void;
 }
 
 export const AppearanceModal: React.FC<AppearanceModalProps> = ({
@@ -42,50 +46,42 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
   onUpdateConfig,
   onResetDefault,
   initialTab,
+  onShowToast,
 }) => {
-  const [activeTab, setActiveTab] = useState<'presets' | 'time' | 'date' | 'lyrics' | 'system-audio'>('presets');
-  const [fpConfig, setFpConfig] = useState<FingerprintConfig>(() => systemAudioService.getConfig());
-  const [testResult, setTestResult] = useState<{ success?: boolean; message?: string } | null>(null);
-  const [isTesting, setIsTesting] = useState(false);
-  const [isReidentifying, setIsReidentifying] = useState(false);
+  const [activeTab, setActiveTab] = useState<'presets' | 'time' | 'date' | 'lyrics' | 'library'>('presets');
+  const [libraryStats, setLibraryStats] = useState<{
+    libraryDir: string;
+    trackCount: number;
+    totalSizeBytes: number;
+    freeSpaceBytes: number;
+  } | null>(null);
+  const [isCleaning, setIsCleaning] = useState(false);
+  const [libraryMessage, setLibraryMessage] = useState<{ text: string; error?: boolean } | null>(null);
+
+  const loadLibraryStats = async () => {
+    if (window.electronAPI?.library?.getStats) {
+      try {
+        const stats = await window.electronAPI.library.getStats();
+        setLibraryStats(stats);
+      } catch (err: any) {
+        console.error('Failed to load library stats:', err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'library') {
+      loadLibraryStats();
+    }
+  }, [isOpen, activeTab]);
 
   useEffect(() => {
     if (isOpen) {
       if (initialTab) {
         setActiveTab(initialTab);
       }
-      setFpConfig(systemAudioService.getConfig());
-      setTestResult(null);
     }
   }, [isOpen, initialTab]);
-
-  const handleUpdateFp = (partial: Partial<FingerprintConfig>) => {
-    const updated = { ...fpConfig, ...partial };
-    setFpConfig(updated);
-    systemAudioService.updateConfig(partial);
-  };
-
-  const handleTestProvider = async () => {
-    setIsTesting(true);
-    setTestResult(null);
-    try {
-      const res = await systemAudioService.testProvider();
-      setTestResult(res);
-    } catch (e: any) {
-      setTestResult({ success: false, message: e.message || 'Test failed' });
-    } finally {
-      setIsTesting(false);
-    }
-  };
-
-  const handleReidentifyNow = async () => {
-    setIsReidentifying(true);
-    try {
-      await systemAudioService.triggerFingerprint();
-    } finally {
-      setIsReidentifying(false);
-    }
-  };
 
   if (!isOpen) return null;
 
@@ -167,16 +163,16 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
             <span>Lyrics Constellation</span>
           </button>
           <button
-            data-tab="system-audio"
-            onClick={() => setActiveTab('system-audio')}
+            data-tab="library"
+            onClick={() => setActiveTab('library')}
             className={`px-3 py-2.5 font-medium flex items-center space-x-1.5 border-b-2 transition-all text-xs ${
-              activeTab === 'system-audio'
+              activeTab === 'library'
                 ? 'border-white text-white'
                 : 'border-transparent text-white/50 hover:text-white/80'
             }`}
           >
-            <Radio className="w-3.5 h-3.5" />
-            <span>System Audio</span>
+            <FolderArchive className="w-3.5 h-3.5" />
+            <span>Library</span>
           </button>
         </div>
 
@@ -649,188 +645,192 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
             </div>
           )}
 
-          {/* TAB 5: SYSTEM AUDIO */}
-          {activeTab === 'system-audio' && (
+          {/* TAB 5: LIBRARY MANAGEMENT */}
+          {activeTab === 'library' && (
             <div className="space-y-4">
-              {/* Privacy Line Notice */}
-              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 flex items-center space-x-2.5 text-white/80">
-                <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                <span className="text-[11px] leading-relaxed">
-                  Audio is analyzed on your device and never saved.
-                </span>
+              <div className="flex items-center space-x-2 text-white/70">
+                <FolderArchive className="w-4 h-4 text-white" />
+                <span className="font-medium text-xs text-white">Local Library Storage & Backup</span>
               </div>
 
-              {/* Identify Songs by Audio (Opt-in Fingerprinting) */}
-              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-white text-xs">Identify songs by audio</div>
-                    <div className="text-[10px] text-white/50">
-                      Fallback fingerprinting when media session has no title
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={fpConfig.enabled}
-                    onChange={(e) => handleUpdateFp({ enabled: e.target.checked })}
-                    className="w-4 h-4 rounded accent-white cursor-pointer"
-                  />
+              {!window.electronAPI?.library ? (
+                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2 text-white/70">
+                  <div className="font-semibold text-white">Desktop Library Storage</div>
+                  <p className="text-[11px] text-white/50 leading-relaxed">
+                    You are running Constella in a web browser. Permanent local filesystem storage and high-performance audio streaming are built into the Constella Desktop app for Windows, macOS, and Linux. In the browser, your uploaded songs and playlists are stored in IndexedDB.
+                  </p>
                 </div>
-
-                {fpConfig.enabled && (
-                  <div className="space-y-3 pt-2 border-t border-white/5 animate-in fade-in duration-150">
-                    {/* Provider Choice */}
-                    <div>
-                      <label className="text-[10px] uppercase tracking-wider text-white/40 block mb-1">
-                        Recognition Provider
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateFp({ provider: 'audd' })}
-                          className={`py-1.5 px-3 rounded-lg border text-xs font-medium transition-all ${
-                            fpConfig.provider === 'audd'
-                              ? 'bg-white text-black border-white'
-                              : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10'
-                          }`}
-                        >
-                          AudD
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateFp({ provider: 'acrcloud' })}
-                          className={`py-1.5 px-3 rounded-lg border text-xs font-medium transition-all ${
-                            fpConfig.provider === 'acrcloud'
-                              ? 'bg-white text-black border-white'
-                              : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10'
-                          }`}
-                        >
-                          ACRCloud
-                        </button>
+              ) : (
+                <div className="space-y-4">
+                  {/* Free Disk Space Warning if < 1GB */}
+                  {libraryStats && libraryStats.freeSpaceBytes < 1024 * 1024 * 1024 && (
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 flex items-center space-x-2.5">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <div>
+                        <div className="font-semibold text-xs">Low Disk Space Warning</div>
+                        <div className="text-[11px] text-amber-300/80">
+                          Drive has less than 1 GB free space remaining ({(libraryStats.freeSpaceBytes / (1024 * 1024)).toFixed(0)} MB left).
+                        </div>
                       </div>
                     </div>
+                  )}
 
-                    {/* AudD Key Input */}
-                    {fpConfig.provider === 'audd' && (
-                      <div>
-                        <label className="text-[10px] uppercase tracking-wider text-white/40 block mb-1">
-                          AudD API Token
-                        </label>
-                        <div className="flex space-x-2">
-                          <input
-                            type="password"
-                            placeholder="Enter your AudD api_token..."
-                            value={fpConfig.auddToken}
-                            onChange={(e) => handleUpdateFp({ auddToken: e.target.value })}
-                            className="flex-1 px-3 py-1.5 rounded-lg bg-black/40 border border-white/10 text-white placeholder-white/30 text-xs focus:outline-none focus:border-white/40"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleTestProvider}
-                            disabled={isTesting || !fpConfig.auddToken}
-                            className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 text-white font-medium text-xs transition-colors border border-white/10 flex items-center space-x-1"
-                          >
-                            <span>{isTesting ? 'Testing...' : 'Test'}</span>
-                          </button>
-                        </div>
+                  {/* Feedback Message */}
+                  {libraryMessage && (
+                    <div
+                      className={`p-3 rounded-xl text-[11px] flex items-center space-x-2 ${
+                        libraryMessage.error
+                          ? 'bg-red-500/10 border border-red-500/20 text-red-300'
+                          : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
+                      }`}
+                    >
+                      {libraryMessage.error ? (
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                      ) : (
+                        <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                      )}
+                      <span>{libraryMessage.text}</span>
+                    </div>
+                  )}
+
+                  {/* Library Folder Path & Open Button */}
+                  <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium text-white flex items-center space-x-1.5">
+                        <FolderOpen className="w-3.5 h-3.5 text-white/70" />
+                        <span>Library Directory</span>
                       </div>
-                    )}
-
-                    {/* ACRCloud Options */}
-                    {fpConfig.provider === 'acrcloud' && (
-                      <div className="space-y-2">
-                        <div>
-                          <label className="text-[10px] uppercase tracking-wider text-white/40 block mb-1">
-                            Host (e.g. identify-us-west-2.acrcloud.com)
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="identify-xx.acrcloud.com"
-                            value={fpConfig.acrHost}
-                            onChange={(e) => handleUpdateFp({ acrHost: e.target.value })}
-                            className="w-full px-3 py-1.5 rounded-lg bg-black/40 border border-white/10 text-white placeholder-white/30 text-xs focus:outline-none focus:border-white/40"
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-[10px] uppercase tracking-wider text-white/40 block mb-1">
-                              Access Key
-                            </label>
-                            <input
-                              type="text"
-                              value={fpConfig.acrAccessKey}
-                              onChange={(e) => handleUpdateFp({ acrAccessKey: e.target.value })}
-                              className="w-full px-3 py-1.5 rounded-lg bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-white/40"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[10px] uppercase tracking-wider text-white/40 block mb-1">
-                              Access Secret
-                            </label>
-                            <input
-                              type="password"
-                              value={fpConfig.acrAccessSecret}
-                              onChange={(e) => handleUpdateFp({ acrAccessSecret: e.target.value })}
-                              className="w-full px-3 py-1.5 rounded-lg bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-white/40"
-                            />
-                          </div>
-                        </div>
-                        <div className="pt-1">
-                          <button
-                            type="button"
-                            onClick={handleTestProvider}
-                            disabled={isTesting || !fpConfig.acrHost || !fpConfig.acrAccessKey}
-                            className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 text-white font-medium text-xs transition-colors border border-white/10"
-                          >
-                            {isTesting ? 'Testing...' : 'Test'}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Test Feedback */}
-                    {testResult && (
-                      <div
-                        className={`p-2.5 rounded-lg text-[11px] flex items-center space-x-2 ${
-                          testResult.success
-                            ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
-                            : 'bg-red-500/10 border border-red-500/20 text-red-300'
-                        }`}
-                      >
-                        {testResult.success ? (
-                          <Check className="w-3.5 h-3.5 flex-shrink-0" />
-                        ) : (
-                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                        )}
-                        <span>{testResult.message}</span>
-                      </div>
-                    )}
-
-                    {/* Re-identify Now Action */}
-                    <div className="pt-1 flex items-center justify-between">
-                      <span className="text-[11px] text-white/50">Capture 10s audio sample:</span>
                       <button
                         type="button"
-                        onClick={handleReidentifyNow}
-                        disabled={isReidentifying}
-                        className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 text-white font-medium text-xs transition-colors border border-white/10 flex items-center space-x-1.5"
+                        onClick={async () => {
+                          if (window.electronAPI?.library?.openFolder) {
+                            await window.electronAPI.library.openFolder();
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium text-[11px] transition-colors border border-white/10 flex items-center space-x-1"
                       >
-                        <RefreshCw className={`w-3 h-3 ${isReidentifying ? 'animate-spin' : ''}`} />
-                        <span>{isReidentifying ? 'Listening...' : 'Re-identify now'}</span>
+                        <FolderOpen className="w-3 h-3" />
+                        <span>Open folder</span>
+                      </button>
+                    </div>
+                    <div className="font-mono text-[10px] text-white/50 bg-black/40 p-2 rounded-lg break-all border border-white/5">
+                      {libraryStats?.libraryDir || 'Loading path...'}
+                    </div>
+                  </div>
+
+                  {/* Storage Stats Grid */}
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 text-center">
+                      <div className="text-[10px] text-white/50 mb-0.5">Stored Songs</div>
+                      <div className="text-base font-bold text-white">
+                        {libraryStats ? libraryStats.trackCount : '—'}
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 text-center">
+                      <div className="text-[10px] text-white/50 mb-0.5">Library Size</div>
+                      <div className="text-base font-bold text-white">
+                        {libraryStats ? `${(libraryStats.totalSizeBytes / (1024 * 1024)).toFixed(1)} MB` : '—'}
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 text-center">
+                      <div className="text-[10px] text-white/50 mb-0.5">Drive Free Space</div>
+                      <div className="text-base font-bold text-white">
+                        {libraryStats ? `${(libraryStats.freeSpaceBytes / (1024 * 1024 * 1024)).toFixed(1)} GB` : '—'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cleanup Unreferenced Files */}
+                  <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between">
+                    <div>
+                      <div className="font-medium text-white flex items-center space-x-1.5">
+                        <Trash2 className="w-3.5 h-3.5 text-white/70" />
+                        <span>Remove Unused Files</span>
+                      </div>
+                      <div className="text-[11px] text-white/50">
+                        Scan library and safely delete unreferenced audio and artwork files.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isCleaning}
+                      onClick={async () => {
+                        setIsCleaning(true);
+                        setLibraryMessage(null);
+                        try {
+                          const activeIds = await playlistDb.getAllTrackIds();
+                          const res = await window.electronAPI!.library!.cleanupUnused(activeIds);
+                          setLibraryMessage({
+                            text: `Cleaned up: deleted ${res.deletedAudio} unused audio file(s) and ${res.deletedArt} artwork file(s) (${(res.freedBytes / (1024 * 1024)).toFixed(1)} MB freed).`,
+                          });
+                          await loadLibraryStats();
+                        } catch (err: any) {
+                          setLibraryMessage({ text: err.message || 'Cleanup failed', error: true });
+                        } finally {
+                          setIsCleaning(false);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-300 font-medium text-xs transition-colors flex items-center space-x-1.5"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>{isCleaning ? 'Cleaning...' : 'Clean unused'}</span>
+                    </button>
+                  </div>
+
+                  {/* Backup & Restore */}
+                  <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-3">
+                    <div className="font-medium text-white flex items-center space-x-1.5">
+                      <HardDrive className="w-3.5 h-3.5 text-white/70" />
+                      <span>Backup & Restore Library</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setLibraryMessage(null);
+                          try {
+                            const res = await window.electronAPI!.library!.exportBackup();
+                            if (res.success) {
+                              setLibraryMessage({
+                                text: `Library backup exported successfully!`,
+                              });
+                              if (onShowToast) onShowToast('Library backup exported successfully');
+                            }
+                          } catch (err: any) {
+                            setLibraryMessage({ text: err.message || 'Export failed', error: true });
+                          }
+                        }}
+                        className="flex-1 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white font-medium text-xs transition-colors flex items-center justify-center space-x-1.5"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Export Library Backup</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setLibraryMessage(null);
+                          try {
+                            const res = await window.electronAPI!.library!.importBackup();
+                            if (res.success) {
+                              setLibraryMessage({
+                                text: `Imported ${res.importedCount} track(s) from backup!`,
+                              });
+                              await loadLibraryStats();
+                              if (onShowToast) onShowToast(`Imported ${res.importedCount} tracks from backup`);
+                            }
+                          } catch (err: any) {
+                            setLibraryMessage({ text: err.message || 'Import failed', error: true });
+                          }
+                        }}
+                        className="flex-1 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white font-medium text-xs transition-colors flex items-center justify-center space-x-1.5"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Import Backup</span>
                       </button>
                     </div>
                   </div>
-                )}
-              </div>
-
-              {/* OS Compatibility Notes */}
-              <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1.5 text-[11px] text-white/50">
-                <div className="font-semibold text-white/70">OS Audio Capture Support:</div>
-                <div>• <span className="text-white/80">Windows</span>: Direct system audio loopback with OS media session (Spotify, Chrome, Edge).</div>
-                <div>• <span className="text-white/80">macOS</span>: Supported on macOS 13+ via ScreenCaptureKit or via virtual audio devices (e.g. BlackHole).</div>
-                <div>• <span className="text-white/80">Linux</span>: Supported via PulseAudio or PipeWire monitor sources.</div>
-                <div>• <span className="text-white/80">Web Browser</span>: Click "Share a tab" and select any audio-playing tab or screen.</div>
-              </div>
+                </div>
+              )}
             </div>
           )}
         </div>

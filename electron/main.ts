@@ -4,64 +4,35 @@ import {
   ipcMain,
   globalShortcut,
   shell,
-  session,
-  desktopCapturer,
-  safeStorage,
+  protocol,
+  dialog,
 } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { spawn, ChildProcess } from 'child_process';
+import { Readable } from 'stream';
+import { LibraryManager } from './libraryManager';
+
+// Register privileged custom protocol for streaming local audio and artwork securely
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'constella-media',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
+
+// Support remote debugging via environment variable for headless CDP tests
+if (process.env.ENABLE_CDP === '1' || process.env.CDP_PORT) {
+  const port = process.env.CDP_PORT || '9333';
+  app.commandLine.appendSwitch('remote-debugging-port', port);
+}
 
 let mainWindow: BrowserWindow | null = null;
-let smtcProcess: ChildProcess | null = null;
-let currentMediaSession: any = { status: 'NO_SESSION' };
-
-function startSmtcDaemon(): void {
-  if (process.platform !== 'win32') return;
-
-  const scriptPath = path.join(__dirname, 'smtc_daemon.ps1');
-  if (!fs.existsSync(scriptPath)) {
-    console.warn('[Electron] smtc_daemon.ps1 not found at:', scriptPath);
-    return;
-  }
-
-  try {
-    smtcProcess = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
-      {
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }
-    );
-
-    let stdoutBuffer = '';
-    smtcProcess.stdout?.on('data', (chunk: Buffer) => {
-      stdoutBuffer += chunk.toString('utf-8');
-      const lines = stdoutBuffer.split(/\r?\n/);
-      stdoutBuffer = lines.pop() || '';
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('{')) continue;
-        try {
-          const parsed = JSON.parse(trimmed);
-          currentMediaSession = parsed;
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('media-session-update', parsed);
-          }
-        } catch {
-          // ignore transient JSON parse error
-        }
-      }
-    });
-
-    smtcProcess.on('exit', () => {
-      smtcProcess = null;
-    });
-  } catch (err) {
-    console.warn('[Electron] Failed to start SMTC daemon:', err);
-  }
-}
 
 // Window state management (remembers size, position, maximization)
 interface WindowState {
@@ -241,25 +212,207 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(() => {
-    // Intercept display media requests to enable seamless system audio loopback capture
-    session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+    createWindow();
+
+    const libraryMgr = LibraryManager.getInstance();
+    const libraryDir = libraryMgr.getLibraryDir();
+    const artDir = libraryMgr.getArtDir();
+
+    // Register protocol handler for streaming library media & artwork securely
+    protocol.handle('constella-media', async (request) => {
       try {
-        const sources = await desktopCapturer.getSources({ types: ['screen'] });
-        if (sources && sources.length > 0) {
-          callback({
-            video: sources[0],
-            audio: 'loopback',
-          });
-          return;
+        const parsedUrl = new URL(request.url);
+        // Format: constella-media://<trackId> or constella-media://art/<trackId>
+        const isArt = parsedUrl.host === 'art' || parsedUrl.pathname.startsWith('/art/');
+        let resourceId = '';
+        if (isArt) {
+          resourceId =
+            parsedUrl.host === 'art'
+              ? parsedUrl.pathname.replace(/^\//, '')
+              : parsedUrl.pathname.replace(/^\/art\//, '');
+        } else {
+          resourceId = parsedUrl.host || parsedUrl.pathname.replace(/^\//, '');
         }
-      } catch (err) {
-        console.warn('[Electron] setDisplayMediaRequestHandler error:', err);
+
+        resourceId = resourceId.split('?')[0].replace(/\/$/, '');
+
+        // Security check: reject any paths containing "..", "/", "\", or non-alphanumeric chars
+        if (!resourceId || !/^[a-zA-Z0-9_\-]+$/.test(resourceId)) {
+          console.warn('[Security] Blocked invalid constella-media resourceId:', resourceId);
+          return new Response('Forbidden', { status: 403 });
+        }
+
+        let targetPath = '';
+        let mimeType = 'audio/mpeg';
+
+        if (isArt) {
+          targetPath = path.join(artDir, `${resourceId}.jpg`);
+          mimeType = 'image/jpeg';
+          if (!fs.existsSync(targetPath)) {
+            targetPath = path.join(artDir, `${resourceId}.png`);
+            mimeType = 'image/png';
+          }
+        } else {
+          const track = libraryMgr.getTrack(resourceId);
+          if (track && track.storedFileName) {
+            targetPath = path.join(libraryDir, track.storedFileName);
+          } else {
+            const files = fs.readdirSync(libraryDir);
+            const match = files.find((f) => f.startsWith(resourceId + '.'));
+            if (match) {
+              targetPath = path.join(libraryDir, match);
+            }
+          }
+
+          const ext = path.extname(targetPath).toLowerCase();
+          if (ext === '.mp3') mimeType = 'audio/mpeg';
+          else if (ext === '.m4a' || ext === '.mp4' || ext === '.aac') mimeType = 'audio/mp4';
+          else if (ext === '.flac') mimeType = 'audio/flac';
+          else if (ext === '.wav') mimeType = 'audio/wav';
+          else if (ext === '.ogg') mimeType = 'audio/ogg';
+        }
+
+        // Verify resolved path strictly resides inside libraryDir
+        const resolvedPath = path.resolve(targetPath);
+        if (!resolvedPath.startsWith(path.resolve(libraryDir))) {
+          console.warn('[Security] Path traversal attempt blocked:', resolvedPath);
+          return new Response('Forbidden', { status: 403 });
+        }
+
+        if (!fs.existsSync(resolvedPath)) {
+          return new Response('File not found', { status: 404 });
+        }
+
+        const stat = fs.statSync(resolvedPath);
+        const rangeHeader = request.headers.get('range');
+
+        if (rangeHeader && !isArt) {
+          const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+          if (match) {
+            const start = parseInt(match[1], 10);
+            const end = match[2] ? parseInt(match[2], 10) : stat.size - 1;
+            const chunkSize = end - start + 1;
+            const stream = fs.createReadStream(resolvedPath, { start, end });
+            const webStream = Readable.toWeb(stream);
+
+            return new Response(webStream as any, {
+              status: 206,
+              statusText: 'Partial Content',
+              headers: {
+                'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+                'Accept-Ranges': 'bytes',
+                'Content-Length': String(chunkSize),
+                'Content-Type': mimeType,
+                'Access-Control-Allow-Origin': '*',
+              },
+            });
+          }
+        }
+
+        const stream = fs.createReadStream(resolvedPath);
+        const webStream = Readable.toWeb(stream);
+
+        return new Response(webStream as any, {
+          status: 200,
+          headers: {
+            'Accept-Ranges': 'bytes',
+            'Content-Length': String(stat.size),
+            'Content-Type': mimeType,
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      } catch (err: any) {
+        console.error('[constella-media] Protocol error:', err);
+        return new Response('Internal error', { status: 500 });
       }
-      callback({});
     });
 
-    createWindow();
-    startSmtcDaemon();
+    // Library IPC Handlers
+    ipcMain.handle('library:import-files', async (_event, filePaths: string[]) => {
+      return await libraryMgr.importFiles(filePaths, (progress) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('library:import-progress', progress);
+        }
+      });
+    });
+
+    ipcMain.handle('library:select-and-import', async () => {
+      if (!mainWindow) return { tracks: [], duplicates: 0, errors: [] };
+      const res = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select Audio Files to Add to Library',
+        properties: ['openFile', 'multiSelections'],
+        filters: [
+          { name: 'Audio Files', extensions: ['mp3', 'wav', 'flac', 'm4a', 'mp4', 'ogg', 'aac'] },
+        ],
+      });
+      if (res.canceled || res.filePaths.length === 0) {
+        return { tracks: [], duplicates: 0, errors: [] };
+      }
+      return await libraryMgr.importFiles(res.filePaths, (progress) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('library:import-progress', progress);
+        }
+      });
+    });
+
+    ipcMain.handle('library:get-stats', async () => {
+      return await libraryMgr.getStats();
+    });
+
+    ipcMain.handle('library:open-folder', async () => {
+      await shell.openPath(libraryMgr.getLibraryDir());
+    });
+
+    ipcMain.handle('library:verify-files', (_event, tracks: any[]) => {
+      return libraryMgr.verifyFiles(tracks);
+    });
+
+    ipcMain.handle('library:locate-file', async (_event, trackId: string) => {
+      if (!mainWindow) return null;
+      const res = await dialog.showOpenDialog(mainWindow, {
+        title: 'Locate Missing Audio File',
+        properties: ['openFile'],
+        filters: [
+          { name: 'Audio Files', extensions: ['mp3', 'wav', 'flac', 'm4a', 'mp4', 'ogg', 'aac'] },
+        ],
+      });
+      if (res.canceled || res.filePaths.length === 0) {
+        return null;
+      }
+      return await libraryMgr.locateFile(trackId, res.filePaths[0]);
+    });
+
+    ipcMain.handle('library:delete-track', async (_event, trackId: string) => {
+      return await libraryMgr.deleteTrack(trackId);
+    });
+
+    ipcMain.handle('library:cleanup-unused', async (_event, activeTrackIds: string[]) => {
+      return await libraryMgr.cleanupUnused(activeTrackIds);
+    });
+
+    ipcMain.handle('library:export-backup', async () => {
+      if (!mainWindow) return { success: false };
+      const res = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select Destination Folder for Library Backup',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      if (res.canceled || res.filePaths.length === 0) {
+        return { success: false };
+      }
+      return await libraryMgr.exportBackup(res.filePaths[0]);
+    });
+
+    ipcMain.handle('library:import-backup', async () => {
+      if (!mainWindow) return { success: false, importedCount: 0 };
+      const res = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select Constella Library Backup Folder',
+        properties: ['openDirectory'],
+      });
+      if (res.canceled || res.filePaths.length === 0) {
+        return { success: false, importedCount: 0 };
+      }
+      return await libraryMgr.importBackup(res.filePaths[0]);
+    });
 
     // Register Always-on-top global accelerator
     const toggleAOT = () => {
@@ -306,38 +459,6 @@ if (!gotTheLock) {
       if (mainWindow) mainWindow.close();
     });
 
-    ipcMain.handle('get-media-session', () => {
-      return currentMediaSession;
-    });
-
-    ipcMain.handle('safe-storage-encrypt', (_event, plaintext: string) => {
-      if (!plaintext) return '';
-      if (safeStorage.isEncryptionAvailable()) {
-        try {
-          return safeStorage.encryptString(plaintext).toString('base64');
-        } catch (e) {
-          console.warn('[Electron] safeStorage encryption failed:', e);
-        }
-      }
-      return Buffer.from(plaintext, 'utf-8').toString('base64');
-    });
-
-    ipcMain.handle('safe-storage-decrypt', (_event, ciphertext: string) => {
-      if (!ciphertext) return '';
-      if (safeStorage.isEncryptionAvailable()) {
-        try {
-          return safeStorage.decryptString(Buffer.from(ciphertext, 'base64'));
-        } catch (e) {
-          console.warn('[Electron] safeStorage decryption failed:', e);
-        }
-      }
-      try {
-        return Buffer.from(ciphertext, 'base64').toString('utf-8');
-      } catch {
-        return '';
-      }
-    });
-
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
@@ -347,12 +468,6 @@ if (!gotTheLock) {
 
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
-    if (smtcProcess) {
-      try {
-        smtcProcess.kill();
-      } catch {}
-      smtcProcess = null;
-    }
   });
 
   app.on('window-all-closed', () => {

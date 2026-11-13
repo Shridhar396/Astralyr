@@ -2,11 +2,17 @@ export interface PlaylistTrack {
   id: string; // unique ID or audio URL
   title: string;
   artist: string;
+  album?: string;
   duration: number; // in seconds
   artworkUrl?: string;
   audioUrl: string;
   rawLrc?: string;
   addedAt: number;
+  storedFileName?: string;
+  originalName?: string;
+  size?: number;
+  fileHash?: string;
+  status?: 'ok' | 'missing' | 'needs-readding';
 }
 
 export interface Playlist {
@@ -333,6 +339,85 @@ class PlaylistDbService {
     } else {
       await this.addTrackToPlaylist(DEFAULT_FAVORITES_ID, track);
       return true;
+    }
+  }
+
+  public async getAllUniqueTracks(): Promise<PlaylistTrack[]> {
+    const playlists = await this.getAllPlaylists();
+    const map = new Map<string, PlaylistTrack>();
+    for (const pl of playlists) {
+      for (const t of pl.tracks) {
+        if (!map.has(t.id)) {
+          map.set(t.id, t);
+        }
+      }
+    }
+    return Array.from(map.values());
+  }
+
+  public async getAllTrackIds(): Promise<string[]> {
+    const tracks = await this.getAllUniqueTracks();
+    return tracks.map((t) => t.id);
+  }
+
+  public async updateTrack(trackId: string, updates: Partial<PlaylistTrack>): Promise<void> {
+    const playlists = await this.getAllPlaylists();
+    let changed = false;
+
+    for (const pl of playlists) {
+      let plChanged = false;
+      const newTracks = pl.tracks.map((t) => {
+        if (t.id === trackId) {
+          plChanged = true;
+          return { ...t, ...updates };
+        }
+        return t;
+      });
+
+      if (plChanged) {
+        await this.savePlaylist({ ...pl, tracks: newTracks });
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.notify();
+    }
+  }
+
+  public async updateTrackStatuses(statuses: Record<string, 'ok' | 'missing' | 'needs-readding'>): Promise<void> {
+    const playlists = await this.getAllPlaylists();
+    let changed = false;
+
+    for (const pl of playlists) {
+      let plChanged = false;
+      const newTracks = pl.tracks.map((t) => {
+        const nextStatus = statuses[t.id];
+        if (nextStatus && t.status !== nextStatus) {
+          plChanged = true;
+          return { ...t, status: nextStatus };
+        }
+        return t;
+      });
+
+      if (plChanged) {
+        await this.savePlaylist({ ...pl, tracks: newTracks });
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.notify();
+    }
+  }
+
+  public async removeTrackEverywhere(trackId: string): Promise<void> {
+    const playlists = await this.getAllPlaylists();
+    for (const pl of playlists) {
+      const hasTrack = pl.tracks.some((t) => t.id === trackId);
+      if (hasTrack) {
+        await this.removeTrackFromPlaylist(pl.id, trackId);
+      }
     }
   }
 }

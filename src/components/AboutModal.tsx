@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { X, ExternalLink, Sparkles, Music2, Radio } from 'lucide-react';
+import { X, ExternalLink, Sparkles, Music2, Disc3 } from 'lucide-react';
 import appIcon from '../../assets/branding/icon-512.png';
 
 interface AboutModalProps {
@@ -78,7 +78,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
 
         {/* Version Badge */}
         <div className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono text-white/60 mb-5">
-          v1.0.2 · synced lyrics + ambient light
+          v1.0.3 · synced lyrics + ambient light
         </div>
 
         {/* Features / Highlights */}
@@ -88,7 +88,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
             <span>Word-by-word synced starlight constellation lyrics</span>
           </div>
           <div className="flex items-center space-x-2.5">
-            <Radio className="w-3.5 h-3.5 text-white/80 flex-shrink-0" />
+            <Disc3 className="w-3.5 h-3.5 text-white/80 flex-shrink-0" />
             <span>Beat-reactive ambient rim lighting & glow physics</span>
           </div>
           <div className="flex items-center space-x-2.5">

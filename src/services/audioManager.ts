@@ -6,10 +6,6 @@ export class AudioManager {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private sourceNode: MediaElementAudioSourceNode | null = null;
-  private mediaStreamSource: MediaStreamAudioSourceNode | null = null;
-  private currentStream: MediaStream | null = null;
-  private isSystemAudioActive: boolean = false;
-  private lastSoundDetectedTime: number = performance.now();
   private gainNode: GainNode | null = null;
 
   private playbackState: PlaybackState = 'idle';
@@ -124,80 +120,7 @@ export class AudioManager {
     }
   }
 
-  /**
-   * Pipe external media stream (System Audio / Tab Audio loopback) directly into AnalyserNode.
-   * NOTE: We intentionally DO NOT connect to audioContext.destination to avoid echoing or feedback.
-   */
-  public attachMediaStream(stream: MediaStream): void {
-    this.setupAudioNodes();
-    if (!this.audioContext || !this.analyser) return;
-
-    // Pause internal audio playback to eliminate clash
-    if (this.audio) {
-      this.audio.pause();
-    }
-
-    if (this.mediaStreamSource) {
-      try {
-        this.mediaStreamSource.disconnect();
-      } catch {}
-      this.mediaStreamSource = null;
-    }
-
-    if (this.currentStream && this.currentStream !== stream) {
-      try {
-        this.currentStream.getTracks().forEach((t) => t.stop());
-      } catch {}
-    }
-
-    this.currentStream = stream;
-    this.isSystemAudioActive = true;
-    this.lastSoundDetectedTime = performance.now();
-
-    try {
-      this.mediaStreamSource = this.audioContext.createMediaStreamSource(stream);
-      this.mediaStreamSource.connect(this.analyser);
-      this.setPlaybackState('playing');
-      console.log('[AudioManager] System Audio MediaStream piped to AnalyserNode');
-    } catch (err) {
-      console.error('[AudioManager] Failed to attach MediaStream to analyser:', err);
-    }
-  }
-
-  public detachMediaStream(): void {
-    if (this.mediaStreamSource) {
-      try {
-        this.mediaStreamSource.disconnect();
-      } catch {}
-      this.mediaStreamSource = null;
-    }
-    if (this.currentStream) {
-      try {
-        this.currentStream.getTracks().forEach((t) => t.stop());
-      } catch {}
-      this.currentStream = null;
-    }
-    this.isSystemAudioActive = false;
-    this.setPlaybackState('idle');
-  }
-
-  public isStreamAttached(): boolean {
-    return this.isSystemAudioActive && !!this.currentStream;
-  }
-
-  public isSilence(): boolean {
-    if (!this.isSystemAudioActive) return false;
-    return performance.now() - this.lastSoundDetectedTime > 1800;
-  }
-
-  public getCurrentMediaStream(): MediaStream | null {
-    return this.currentStream;
-  }
-
   public async playUrl(url: string, resetTime: boolean = true, isLocal: boolean = false): Promise<void> {
-    if (this.isSystemAudioActive) {
-      this.detachMediaStream();
-    }
     this.init();
     await this.resumeAudioContext();
 
@@ -415,13 +338,6 @@ export class AudioManager {
     }
     const avgFreq = totalSum / (this.BIN_COUNT * 255);
     const nowMs = performance.now();
-
-    // Track active sound vs silence for System Audio
-    if (this.isSystemAudioActive) {
-      if (avgFreq > 0.02 || bassEnergy > 0.04) {
-        this.lastSoundDetectedTime = nowMs;
-      }
-    }
 
     // Beat Detection
     this.energyHistory.push(bassEnergy);

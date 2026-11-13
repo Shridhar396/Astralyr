@@ -20,12 +20,10 @@ import {
   Library,
   Heart,
   FolderPlus,
-  Radio,
 } from 'lucide-react';
 import { MusicTrack } from '../types/lyrics';
 import { PlaybackState } from '../types/radio';
 import { MusicSearchService, AudiusTrackItem } from '../services/musicSearchService';
-import { ParsedTabHint } from '../services/lrcService';
 
 export type AmbientColorMode = 'preset' | 'album' | 'autocycle' | 'custom';
 
@@ -67,25 +65,16 @@ interface BottomTrackPillProps {
   onVolumeChange: (vol: number) => void;
   onToggleMute: () => void;
   onLoadLocalAudio: (file: File) => void;
+  onBatchLoadLocalAudio?: (files: File[]) => void;
+  onSelectAndImport?: () => void;
   onSelectAudiusTrack: (track: AudiusTrackItem) => void;
   onOpenAppearance?: () => void;
-  onOpenAppearanceTab?: (tab: 'presets' | 'time' | 'date' | 'lyrics' | 'system-audio') => void;
+  onOpenAppearanceTab?: (tab: 'presets' | 'time' | 'date' | 'lyrics') => void;
   onOpenAbout?: () => void;
   onOpenLibrary?: () => void;
   onOpenAddToPlaylist?: (track: MusicTrack | AudiusTrackItem) => void;
   isTrackFavorited?: boolean;
   onToggleFavorite?: () => void;
-  isSystemAudioActive?: boolean;
-  systemAudioStatus?: 'inactive' | 'listening' | 'silence' | 'error';
-  hasIdentifiedSong?: boolean;
-  songHint?: ParsedTabHint | null;
-  onAcceptHint?: (hint: ParsedTabHint) => void;
-  onRejectHintToSearch?: (hint: ParsedTabHint) => void;
-  onToggleSystemAudio?: () => void;
-  onSetManualTrack?: (title: string, artist: string) => void;
-  onIdentifyByAudio?: () => void;
-  isFingerprinting?: boolean;
-  isFingerprintEnabled?: boolean;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
 }
@@ -109,6 +98,8 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
   onVolumeChange,
   onToggleMute,
   onLoadLocalAudio,
+  onBatchLoadLocalAudio,
+  onSelectAndImport,
   onSelectAudiusTrack,
   onOpenAppearance,
   onOpenAppearanceTab,
@@ -117,25 +108,11 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
   onOpenAddToPlaylist,
   isTrackFavorited = false,
   onToggleFavorite,
-  isSystemAudioActive = false,
-  systemAudioStatus = 'inactive',
-  hasIdentifiedSong = false,
-  songHint = null,
-  onAcceptHint,
-  onRejectHintToSearch,
-  onToggleSystemAudio,
-  onSetManualTrack,
-  onIdentifyByAudio,
-  isFingerprinting = false,
-  isFingerprintEnabled = false,
   onMouseEnter,
   onMouseLeave,
 }) => {
   const [showSearchDrawer, setShowSearchDrawer] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showManualSearch, setShowManualSearch] = useState(false);
-  const [manualTitle, setManualTitle] = useState('');
-  const [manualArtist, setManualArtist] = useState('');
 
   // Audius Live Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -154,9 +131,14 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      onLoadLocalAudio(file);
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      if (files.length > 1 && onBatchLoadLocalAudio) {
+        onBatchLoadLocalAudio(Array.from(files));
+      } else {
+        onLoadLocalAudio(files[0]);
+      }
+      e.target.value = '';
     }
   };
 
@@ -228,6 +210,7 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
       <input
         type="file"
         ref={fileInputRef}
+        multiple
         accept="audio/*,.mp3,.wav,.flac,.m4a,.ogg"
         onChange={handleFileChange}
         className="hidden"
@@ -363,143 +346,65 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
           boxShadow: '0 20px 50px rgba(0, 0, 0, 0.95), 0 0 1px 1px rgba(255, 255, 255, 0.1)',
         }}
       >
-        {/* Suggestion Card for Tab Hint */}
-        {isSystemAudioActive && !hasIdentifiedSong && songHint && (
-          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-cyan-950/60 border border-cyan-400/30 text-xs mb-3 shadow-lg animate-in fade-in slide-in-from-top-1 duration-200">
-            <div className="flex items-center space-x-2 truncate mr-2">
-              <Sparkles className="w-4 h-4 text-cyan-300 flex-shrink-0 animate-pulse" />
-              <span className="text-white/90 truncate">
-                Is it <strong className="text-white font-semibold">{songHint.artist} – {songHint.title}</strong>?
+        {/* Top Header Row: Track Info & Duration */}
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center space-x-2.5 min-w-0 pr-3">
+            <span className="text-white/80 text-sm">✦</span>
+            <div className="truncate flex items-center">
+              <span className="text-[13px] font-semibold text-white tracking-tight mr-2 truncate">
+                {currentTrack.title}
+              </span>
+              <span className="text-[12px] font-normal text-white/50 truncate">
+                {currentTrack.artist}
               </span>
             </div>
-            <div className="flex items-center space-x-1.5 flex-shrink-0">
-              <button
-                onClick={() => onAcceptHint?.(songHint)}
-                className="px-2.5 py-1 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-black font-semibold text-xs transition-colors shadow active:scale-95"
-              >
-                Yes
-              </button>
-              <button
-                onClick={() => {
-                  setManualTitle(songHint.title);
-                  setManualArtist(songHint.artist);
-                  setShowManualSearch(true);
-                  onRejectHintToSearch?.(songHint);
-                }}
-                className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-xs transition-colors"
-              >
-                Search instead
-              </button>
+
+            {/* Quick Favorite / Add to Playlist buttons */}
+            <div className="flex items-center space-x-1 pl-1 flex-shrink-0">
+              {onToggleFavorite && (
+                <button
+                  onClick={onToggleFavorite}
+                  className={`p-1 rounded-lg transition-colors ${
+                    isTrackFavorited
+                      ? 'text-red-400 hover:text-red-300'
+                      : 'text-white/30 hover:text-white/80 hover:bg-white/10'
+                  }`}
+                  title={isTrackFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
+                >
+                  <Heart className={`w-3.5 h-3.5 ${isTrackFavorited ? 'fill-current' : ''}`} />
+                </button>
+              )}
+              {onOpenAddToPlaylist && (
+                <button
+                  onClick={() => onOpenAddToPlaylist(currentTrack)}
+                  className="p-1 rounded-lg text-white/30 hover:text-white/80 hover:bg-white/10 transition-colors"
+                  title="Add to Playlist…"
+                >
+                  <FolderPlus className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
-        )}
 
-        {/* Unidentified System Audio State: "Listening… which song is this?" */}
-        {isSystemAudioActive && !hasIdentifiedSong ? (
-          <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 mb-3">
-            <div className="flex items-center space-x-2 min-w-0 mr-2">
-              <Radio className="w-3.5 h-3.5 text-cyan-300 animate-pulse flex-shrink-0" />
-              <span className="text-[12px] font-medium text-white/90 truncate">
-                Listening… which song is this?
-              </span>
-            </div>
-            <div className="flex items-center space-x-2 flex-shrink-0">
-              <button
-                onClick={() => setShowManualSearch(true)}
-                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors"
-              >
-                Search song
-              </button>
-              <button
-                onClick={() => {
-                  if (isFingerprintEnabled) {
-                    onIdentifyByAudio?.();
-                  } else {
-                    onOpenAppearanceTab?.('system-audio');
-                  }
-                }}
-                disabled={isFingerprinting}
-                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors flex items-center space-x-1"
-                title={
-                  isFingerprintEnabled
-                    ? 'Identify playing song with audio recognition'
-                    : 'Enable audio fingerprinting in Settings'
-                }
-              >
-                {isFingerprinting && <Loader2 className="w-3 h-3 animate-spin mr-1 text-cyan-300" />}
-                <span>
-                  {isFingerprinting
-                    ? 'Identifying…'
-                    : isFingerprintEnabled
-                    ? 'Identify by audio'
-                    : 'Identify by audio (Enable in Settings)'}
-                </span>
-              </button>
-            </div>
+          <div className="text-[11px] font-mono text-white/50 flex-shrink-0">
+            <span>{formatTime(currentTime)}</span>
+            <span className="mx-1 text-white/30">/</span>
+            <span>{formatTime(duration)}</span>
           </div>
-        ) : (
-          <>
-            {/* Top Header Row: Track Info & Duration */}
-            <div className="flex items-center justify-between mb-2.5">
-              <div className="flex items-center space-x-2.5 min-w-0 pr-3">
-                <span className="text-white/80 text-sm">✦</span>
-                <div className="truncate flex items-center">
-                  <span className="text-[13px] font-semibold text-white tracking-tight mr-2 truncate">
-                    {currentTrack.title}
-                  </span>
-                  <span className="text-[12px] font-normal text-white/50 truncate">
-                    {currentTrack.artist}
-                  </span>
-                </div>
+        </div>
 
-                {/* Quick Favorite / Add to Playlist buttons */}
-                <div className="flex items-center space-x-1 pl-1 flex-shrink-0">
-                  {onToggleFavorite && (
-                    <button
-                      onClick={onToggleFavorite}
-                      className={`p-1 rounded-lg transition-colors ${
-                        isTrackFavorited
-                          ? 'text-red-400 hover:text-red-300'
-                          : 'text-white/30 hover:text-white/80 hover:bg-white/10'
-                      }`}
-                      title={isTrackFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
-                    >
-                      <Heart className={`w-3.5 h-3.5 ${isTrackFavorited ? 'fill-current' : ''}`} />
-                    </button>
-                  )}
-                  {onOpenAddToPlaylist && (
-                    <button
-                      onClick={() => onOpenAddToPlaylist(currentTrack)}
-                      className="p-1 rounded-lg text-white/30 hover:text-white/80 hover:bg-white/10 transition-colors"
-                      title="Add to Playlist…"
-                    >
-                      <FolderPlus className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="text-[11px] font-mono text-white/50 flex-shrink-0">
-                <span>{formatTime(currentTime)}</span>
-                <span className="mx-1 text-white/30">/</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
-
-            {/* Timeline Scrubber */}
-            <div className="space-y-1 mb-3">
-              <input
-                type="range"
-                min="0"
-                max={duration || 100}
-                step="0.5"
-                value={currentTime}
-                onChange={(e) => onSeek(parseFloat(e.target.value))}
-                className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white hover:bg-white/30 transition-all"
-              />
-            </div>
-          </>
-        )}
+        {/* Timeline Scrubber */}
+        <div className="space-y-1 mb-3">
+          <input
+            type="range"
+            min="0"
+            max={duration || 100}
+            step="0.5"
+            value={currentTime}
+            onChange={(e) => onSeek(parseFloat(e.target.value))}
+            className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white hover:bg-white/30 transition-all"
+          />
+        </div>
 
         {/* Transport Controls & Tools Bar */}
         <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
@@ -621,66 +526,6 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
               <span className="hidden sm:inline">Glow Color</span>
             </button>
 
-            {/* System Audio / Share a tab source switcher */}
-            {onToggleSystemAudio && (
-              <button
-                onClick={onToggleSystemAudio}
-                className={`px-2.5 py-1.5 rounded-xl flex items-center space-x-1.5 border transition-all text-[11px] font-medium ${
-                  isSystemAudioActive
-                    ? 'bg-white/20 border-white/50 text-white shadow-sm ring-1 ring-white/20'
-                    : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-                }`}
-                title={
-                  typeof window !== 'undefined' && !!(window as any).electronAPI?.isElectron
-                    ? 'System Audio capture (Spotify, YouTube Music, Apple Music)'
-                    : 'Share audio from a browser tab (Tick "Also share tab audio")'
-                }
-              >
-                <Radio className={`w-3.5 h-3.5 ${isSystemAudioActive ? 'text-cyan-300 animate-pulse' : ''}`} />
-                <span className="hidden sm:inline">
-                  {typeof window !== 'undefined' && !!(window as any).electronAPI?.isElectron
-                    ? 'System Audio'
-                    : 'Share a tab'}
-                </span>
-
-                {/* System Audio Status Indicator */}
-                {isSystemAudioActive && (
-                  <span className="flex items-center space-x-1 pl-0.5">
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        systemAudioStatus === 'listening'
-                          ? 'bg-emerald-400 animate-pulse'
-                          : systemAudioStatus === 'silence'
-                          ? 'bg-amber-400/80'
-                          : systemAudioStatus === 'error'
-                          ? 'bg-red-400'
-                          : 'bg-white/40'
-                      }`}
-                    />
-                    <span
-                      className={`text-[9px] uppercase tracking-wider font-mono hidden md:inline ${
-                        systemAudioStatus === 'listening'
-                          ? 'text-emerald-300'
-                          : systemAudioStatus === 'silence'
-                          ? 'text-amber-300/80'
-                          : systemAudioStatus === 'error'
-                          ? 'text-red-300'
-                          : 'text-white/40'
-                      }`}
-                    >
-                      {systemAudioStatus === 'listening'
-                        ? 'Live'
-                        : systemAudioStatus === 'silence'
-                        ? 'Silence'
-                        : systemAudioStatus === 'error'
-                        ? 'Err'
-                        : 'Idle'}
-                    </span>
-                  </span>
-                )}
-              </button>
-            )}
-
             {/* Audius Music Search Toggle */}
             <button
               onClick={() => setShowSearchDrawer((prev) => !prev)}
@@ -697,29 +542,19 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
 
             {/* Local Audio File Picker */}
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                if (window.electronAPI?.library?.selectAndImport && onSelectAndImport) {
+                  onSelectAndImport();
+                } else {
+                  fileInputRef.current?.click();
+                }
+              }}
               className="px-2.5 py-1.5 rounded-xl flex items-center space-x-1.5 bg-white/5 border border-white/10 hover:bg-white/10 text-white/70 hover:text-white transition-all text-[11px] font-medium"
               title="Open Local Audio File (MP3/WAV/FLAC)"
             >
               <FileAudio className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Local File</span>
             </button>
-
-            {/* Manual Song Lookup for System Audio */}
-            {isSystemAudioActive && onSetManualTrack && (
-              <button
-                onClick={() => setShowManualSearch((prev) => !prev)}
-                className={`px-2.5 py-1.5 rounded-xl flex items-center space-x-1.5 border transition-all text-[11px] font-medium ${
-                  showManualSearch
-                    ? 'bg-white/20 border-white/40 text-white'
-                    : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-                }`}
-                title="Search Song for Lyrics (System Audio Manual Match)"
-              >
-                <Search className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Search Song</span>
-              </button>
-            )}
 
             {/* Volume Control */}
             <div className="flex items-center space-x-1.5 px-2 py-1 rounded-xl bg-white/5 border border-white/10">
@@ -824,49 +659,6 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
               ))}
             </div>
           </div>
-        )}
-
-        {/* Manual Song Search Drawer (System Audio Fallback) */}
-        {showManualSearch && isSystemAudioActive && onSetManualTrack && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (manualTitle.trim()) {
-                onSetManualTrack(manualTitle.trim(), manualArtist.trim());
-                setShowManualSearch(false);
-              }
-            }}
-            className="mt-3 pt-3 border-t border-white/10 flex items-center space-x-2 animate-in fade-in duration-150"
-          >
-            <input
-              type="text"
-              placeholder="Song title..."
-              value={manualTitle}
-              onChange={(e) => setManualTitle(e.target.value)}
-              className="flex-1 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-white/40 focus:outline-none focus:border-white/30"
-              autoFocus
-            />
-            <input
-              type="text"
-              placeholder="Artist (optional)..."
-              value={manualArtist}
-              onChange={(e) => setManualArtist(e.target.value)}
-              className="flex-1 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-white/40 focus:outline-none focus:border-white/30"
-            />
-            <button
-              type="submit"
-              className="px-3 py-1.5 rounded-xl bg-white text-black text-xs font-semibold hover:bg-white/90 transition-all shadow"
-            >
-              Set Song
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowManualSearch(false)}
-              className="p-1.5 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-colors text-xs"
-            >
-              ✕
-            </button>
-          </form>
         )}
       </div>
     </div>
