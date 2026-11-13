@@ -238,4 +238,121 @@ describe('Desktop Music Library Manager', () => {
     const fullContent = fs.readFileSync(filePath);
     expect(sliced).toEqual(fullContent.subarray(start, end + 1));
   });
+
+  it('10. importSongs copies audio into library with <timestamp>-<originalName> and saves playlist.json', async () => {
+    const playlist = await mgr.importSongs([sampleMp3_1, sampleMp3_2]);
+    expect(playlist.length).toBe(2);
+
+    const playlistFile = mgr.getPlaylistPath();
+    expect(fs.existsSync(playlistFile)).toBe(true);
+
+    const onDiskPlaylist = JSON.parse(fs.readFileSync(playlistFile, 'utf-8'));
+    expect(onDiskPlaylist.length).toBe(2);
+
+    for (const track of playlist) {
+      expect(track.id).toBeDefined();
+      expect(track.fileName).toMatch(/^\d+-[a-zA-Z0-9_\-]+\.mp3$/);
+      expect(fs.existsSync(track.filePath)).toBe(true);
+      expect(track.title).toBeDefined();
+      expect(track.artist).toBeDefined();
+    }
+  });
+
+  it('11. Reloads and auto-restores playlist.json across app restarts', async () => {
+    await mgr.importSongs([sampleMp3_1]);
+    const originalPlaylist = await mgr.getPlaylist();
+    expect(originalPlaylist.length).toBe(1);
+
+    // Simulate app restart by clearing singleton instance
+    (LibraryManager as any).instance = null;
+    const restartedMgr = LibraryManager.getInstance();
+
+    const restoredPlaylist = await restartedMgr.getPlaylist();
+    expect(restoredPlaylist.length).toBe(1);
+    expect(restoredPlaylist[0].id).toBe(originalPlaylist[0].id);
+    expect(restoredPlaylist[0].fileName).toBe(originalPlaylist[0].fileName);
+    expect(fs.existsSync(restoredPlaylist[0].filePath)).toBe(true);
+  });
+
+  it('12. Auto-prunes missing files from playlist.json when files are deleted externally', async () => {
+    const playlist = await mgr.importSongs([sampleMp3_1, sampleMp3_2]);
+    expect(playlist.length).toBe(2);
+
+    // Delete one of the copied files directly from library directory
+    fs.unlinkSync(playlist[0].filePath);
+    expect(fs.existsSync(playlist[0].filePath)).toBe(false);
+
+    // getPlaylist() should detect missing file and prune it
+    const prunedPlaylist = await mgr.getPlaylist();
+    expect(prunedPlaylist.length).toBe(1);
+    expect(prunedPlaylist[0].id).toBe(playlist[1].id);
+
+    // Verify playlist.json was saved with pruned state
+    const onDisk = JSON.parse(fs.readFileSync(mgr.getPlaylistPath(), 'utf-8'));
+    expect(onDisk.length).toBe(1);
+    expect(onDisk[0].id).toBe(playlist[1].id);
+  });
+
+  it('13. removeSong removes entry from playlist.json and unlinks file from disk', async () => {
+    const playlist = await mgr.importSongs([sampleMp3_1, sampleMp3_2]);
+    const trackToRemove = playlist[0];
+    expect(fs.existsSync(trackToRemove.filePath)).toBe(true);
+
+    const remaining = await mgr.removeSong(trackToRemove.id);
+    expect(remaining.length).toBe(1);
+    expect(remaining.find((t) => t.id === trackToRemove.id)).toBeUndefined();
+
+    // Verify file unlinked from disk
+    expect(fs.existsSync(trackToRemove.filePath)).toBe(false);
+
+    // Verify playlist.json updated
+    const onDisk = JSON.parse(fs.readFileSync(mgr.getPlaylistPath(), 'utf-8'));
+    expect(onDisk.length).toBe(1);
+    expect(onDisk[0].id).toBe(playlist[1].id);
+  });
+
+  it('14. handleMediaRequest streams track by filename and by UUID with CORS and 206 range support', async () => {
+    const playlist = await mgr.importSongs([sampleMp3_1]);
+    const track = playlist[0];
+
+    // 1. Full track request by fileName: astralyr-media://track/<fileName>
+    const req1 = new Request(`astralyr-media://track/${encodeURIComponent(track.fileName)}`);
+    const res1 = await mgr.handleMediaRequest(req1);
+    expect(res1.status).toBe(200);
+    expect(res1.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(res1.headers.get('Content-Type')).toBe('audio/mpeg');
+    expect(res1.headers.get('Accept-Ranges')).toBe('bytes');
+
+    // 2. Range request: bytes=0-15
+    const req2 = new Request(`astralyr-media://track/${encodeURIComponent(track.fileName)}`, {
+      headers: { range: 'bytes=0-15' },
+    });
+    const res2 = await mgr.handleMediaRequest(req2);
+    expect(res2.status).toBe(206);
+    expect(res2.headers.get('Content-Range')).toMatch(/^bytes 0-15\/\d+$/);
+    expect(res2.headers.get('Content-Length')).toBe('16');
+    expect(res2.headers.get('Access-Control-Allow-Origin')).toBe('*');
+
+    // 3. Track request by UUID: astralyr-media://<trackId>
+    const req3 = new Request(`astralyr-media://${track.id}`);
+    const res3 = await mgr.handleMediaRequest(req3);
+    expect(res3.status).toBe(200);
+
+    // 4. Legacy alias constella-media://track/<fileName>
+    const req4 = new Request(`constella-media://track/${encodeURIComponent(track.fileName)}`);
+    const res4 = await mgr.handleMediaRequest(req4);
+    expect(res4.status).toBe(200);
+  });
+
+  it('15. handleMediaRequest security: rejects path traversal and returns 404 for missing resources', async () => {
+    // 1. Path traversal attempt
+    const req1 = new Request('astralyr-media://track/..%2F..%2Fsecret.txt');
+    const res1 = await mgr.handleMediaRequest(req1);
+    expect(res1.status).toBe(403);
+
+    // 2. Non-existent file
+    const req2 = new Request('astralyr-media://track/nonexistent-song.mp3');
+    const res2 = await mgr.handleMediaRequest(req2);
+    expect(res2.status).toBe(404);
+  });
 });

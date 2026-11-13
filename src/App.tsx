@@ -802,8 +802,87 @@ export const App: React.FC = () => {
     [showToast]
   );
 
+  const handleImportPersistentTracks = useCallback(
+    async (importedList: PersistentTrack[]) => {
+      if (!importedList || importedList.length === 0) return;
+
+      const convertedQueue: MusicTrack[] = importedList.map((t) => ({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        album: t.album || 'Local Audio',
+        duration: t.duration,
+        audioUrl: `astralyr-media://track/${encodeURIComponent(t.fileName)}`,
+        artworkUrl: t.artworkUrl,
+        rawLrc: '',
+        primaryColor: '#ffffff',
+        secondaryColor: '#94a3b8',
+        accentGlow: 'rgba(255, 255, 255, 0.75)',
+      }));
+
+      // Sync into default favorites playlist in playlistDb
+      for (const t of importedList) {
+        const plTrack: PlaylistTrack = {
+          id: t.id,
+          title: t.title,
+          artist: t.artist,
+          album: t.album,
+          duration: t.duration,
+          artworkUrl: t.artworkUrl,
+          audioUrl: `astralyr-media://track/${encodeURIComponent(t.fileName)}`,
+          storedFileName: t.fileName,
+          originalName: t.fileName,
+          size: 0,
+          fileHash: '',
+          status: 'ok',
+          addedAt: t.addedAt || Date.now(),
+        };
+        await playlistDb.addTrackToPlaylist(DEFAULT_FAVORITES_ID, plTrack);
+      }
+
+      showToast(`Added ${importedList.length} song(s) to playlist`);
+
+      setTracks(convertedQueue);
+      setTrackIndex(0);
+      const first = convertedQueue[0];
+      setDuration(first.duration || 180);
+
+      const mgr = audioManager.current;
+      await mgr.resumeAudioContext();
+      await mgr.playUrl(first.audioUrl, true, true);
+      setPlaybackState('playing');
+
+      // Fetch synced lyrics in background via LRCLIB
+      setIsSyncingLyrics(true);
+      const match = await LrcService.searchSyncedLyricsWithDuration(
+        first.title,
+        first.artist,
+        first.duration,
+        5000
+      );
+      setIsSyncingLyrics(false);
+      if (match?.syncedLyrics) {
+        first.rawLrc = match.syncedLyrics;
+        setTracks((prev) => prev.map((t) => (t.id === first.id ? { ...t, rawLrc: match.syncedLyrics } : t)));
+        setVisualizerMode('lyrics');
+      } else {
+        setVisualizerMode('ring');
+      }
+    },
+    [showToast]
+  );
+
   const handleSelectAndImport = useCallback(async () => {
-    if (window.electronAPI?.library?.selectAndImport) {
+    if (window.electronAPI?.library?.importSongs) {
+      try {
+        const res = await window.electronAPI.library.importSongs();
+        if (res && res.length > 0) {
+          await handleImportPersistentTracks(res);
+        }
+      } catch (err: any) {
+        showToast(err.message || 'Import failed');
+      }
+    } else if (window.electronAPI?.library?.selectAndImport) {
       try {
         const res = await window.electronAPI.library.selectAndImport();
         if (res.errors.length > 0) {
@@ -819,12 +898,25 @@ export const App: React.FC = () => {
         showToast(err.message || 'Import failed');
       }
     }
-  }, [handleImportElectronTracks, showToast]);
+  }, [handleImportPersistentTracks, handleImportElectronTracks, showToast]);
 
   // Load user's local audio file: extracts ID3 tags and queries LRCLIB
   const handleLoadLocalAudio = useCallback(async (file: File) => {
-    // In Electron Desktop app: copy into app library folder
-    if (window.electronAPI?.library && (file as any).path) {
+    // In Electron Desktop app: copy into app library folder & playlist.json
+    if (window.electronAPI?.library?.importSongs) {
+      const filePath = window.electronAPI.getPathForFile ? window.electronAPI.getPathForFile(file) : (file as any).path;
+      if (filePath) {
+        try {
+          const res = await window.electronAPI.library.importSongs([filePath]);
+          if (res && res.length > 0) {
+            await handleImportPersistentTracks(res);
+            return;
+          }
+        } catch (err: any) {
+          console.warn('[LocalAudio] Electron importSongs failed, falling back:', err);
+        }
+      }
+    } else if (window.electronAPI?.library && (file as any).path) {
       try {
         const res = await window.electronAPI.library.importFiles([(file as any).path]);
         if (res.errors.length > 0) {
@@ -890,11 +982,23 @@ export const App: React.FC = () => {
       await mgr.resumeAudioContext();
       await mgr.playUrl(objectUrl, true, true);
     };
-  }, [handleImportElectronTracks, showToast]);
+  }, [handleImportPersistentTracks, handleImportElectronTracks, showToast]);
 
   const handleBatchLoadLocalAudio = useCallback(
     async (files: File[]) => {
-      if (window.electronAPI?.library) {
+      if (window.electronAPI?.library?.importSongs) {
+        const filePaths = files
+          .map((f) => (window.electronAPI?.getPathForFile ? window.electronAPI.getPathForFile(f) : (f as any).path))
+          .filter(Boolean);
+        if (filePaths.length > 0) {
+          showToast(`Importing ${filePaths.length} file(s)...`);
+          const res = await window.electronAPI.library.importSongs(filePaths);
+          if (res && res.length > 0) {
+            await handleImportPersistentTracks(res);
+          }
+          return;
+        }
+      } else if (window.electronAPI?.library) {
         const filePaths = files.map((f) => (f as any).path).filter(Boolean);
         if (filePaths.length > 0) {
           showToast(`Importing ${filePaths.length} file(s)...`);
@@ -915,7 +1019,7 @@ export const App: React.FC = () => {
         handleLoadLocalAudio(files[0]);
       }
     },
-    [handleImportElectronTracks, handleLoadLocalAudio, showToast]
+    [handleImportPersistentTracks, handleImportElectronTracks, handleLoadLocalAudio, showToast]
   );
 
   // Desktop startup: verify library files, check disk space, and monitor import progress
@@ -947,8 +1051,53 @@ export const App: React.FC = () => {
   useEffect(() => {
     const restoreLastSession = async () => {
       try {
-        const lastPlId = localStorage.getItem('astralyr_last_playlist_id') || localStorage.getItem('constella_last_playlist_id');
         const lastTrackId = localStorage.getItem('astralyr_last_track_id') || localStorage.getItem('constella_last_track_id');
+
+        // 1. Electron Desktop: auto-restore playlist from playlist.json via getPlaylist
+        if (window.electronAPI?.library?.getPlaylist) {
+          try {
+            const persistentPlaylist = await window.electronAPI.library.getPlaylist();
+            if (persistentPlaylist && persistentPlaylist.length > 0) {
+              const convertedQueue: MusicTrack[] = persistentPlaylist.map((t) => ({
+                id: t.id,
+                title: t.title,
+                artist: t.artist,
+                album: t.album || 'Local Audio',
+                duration: t.duration,
+                audioUrl: `astralyr-media://track/${encodeURIComponent(t.fileName)}`,
+                artworkUrl: t.artworkUrl,
+                rawLrc: '',
+                primaryColor: '#ffffff',
+                secondaryColor: '#94a3b8',
+                accentGlow: 'rgba(255, 255, 255, 0.75)',
+              }));
+              setTracks(convertedQueue);
+              const targetIdx = lastTrackId ? convertedQueue.findIndex((t) => t.id === lastTrackId) : 0;
+              const finalIdx = targetIdx >= 0 ? targetIdx : 0;
+              setTrackIndex(finalIdx);
+              setDuration(convertedQueue[finalIdx].duration || 180);
+
+              // Background fetch lyrics for initial track
+              const initialTrack = convertedQueue[finalIdx];
+              LrcService.searchSyncedLyricsWithDuration(initialTrack.title, initialTrack.artist, initialTrack.duration, 4000)
+                .then((match) => {
+                  if (match?.syncedLyrics) {
+                    setTracks((prev) =>
+                      prev.map((t) => (t.id === initialTrack.id ? { ...t, rawLrc: match.syncedLyrics } : t))
+                    );
+                    setVisualizerMode('lyrics');
+                  }
+                })
+                .catch(() => {});
+              return;
+            }
+          } catch (e) {
+            console.warn('Failed to auto-restore playlist.json:', e);
+          }
+        }
+
+        // 2. Web fallback: restore from last playlist in playlistDb
+        const lastPlId = localStorage.getItem('astralyr_last_playlist_id') || localStorage.getItem('constella_last_playlist_id');
         if (lastPlId) {
           const pl = await playlistDb.getPlaylist(lastPlId);
           if (pl && pl.tracks.length > 0) {
@@ -982,7 +1131,7 @@ export const App: React.FC = () => {
     restoreLastSession();
   }, []);
 
-  // Global Drag & Drop: import audio files directly into library
+  // Global Drag & Drop: import audio files directly into persistent library
   useEffect(() => {
     const handleDragOver = (e: DragEvent) => {
       e.preventDefault();
@@ -992,7 +1141,22 @@ export const App: React.FC = () => {
       e.preventDefault();
       if (!e.dataTransfer || !e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
 
-      if (window.electronAPI?.library) {
+      if (window.electronAPI?.library?.importSongs) {
+        const filePaths: string[] = [];
+        for (let i = 0; i < e.dataTransfer.files.length; i++) {
+          const f = e.dataTransfer.files[i];
+          const p = window.electronAPI.getPathForFile ? window.electronAPI.getPathForFile(f) : (f as any).path;
+          if (p) filePaths.push(p);
+        }
+        if (filePaths.length > 0) {
+          showToast(`Importing ${filePaths.length} dropped file(s)...`);
+          const res = await window.electronAPI.library.importSongs(filePaths);
+          if (res && res.length > 0) {
+            await handleImportPersistentTracks(res);
+          }
+          return;
+        }
+      } else if (window.electronAPI?.library) {
         const filePaths: string[] = [];
         for (let i = 0; i < e.dataTransfer.files.length; i++) {
           const p = (e.dataTransfer.files[i] as any).path;
@@ -1026,7 +1190,7 @@ export const App: React.FC = () => {
       window.removeEventListener('dragover', handleDragOver);
       window.removeEventListener('drop', handleDrop);
     };
-  }, [handleImportElectronTracks, handleLoadLocalAudio, showToast]);
+  }, [handleImportPersistentTracks, handleImportElectronTracks, handleLoadLocalAudio, showToast]);
 
   // Load Audius online track with automatic LRCLIB matching
   const handleSelectAudiusTrack = useCallback(async (item: AudiusTrackItem) => {

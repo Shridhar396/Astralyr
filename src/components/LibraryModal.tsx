@@ -908,7 +908,9 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                   onClick={async () => {
                     const { track } = trackToDelete;
                     setTrackToDelete(null);
-                    if (window.electronAPI?.library?.deleteTrack) {
+                    if (window.electronAPI?.library?.removeSong) {
+                      await window.electronAPI.library.removeSong(track.id);
+                    } else if (window.electronAPI?.library?.deleteTrack) {
                       await window.electronAPI.library.deleteTrack(track.id);
                     }
                     await playlistDb.removeTrackEverywhere(track.id);

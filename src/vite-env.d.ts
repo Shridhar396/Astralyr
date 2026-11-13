@@ -7,6 +7,18 @@ declare module '*.css' {
 
 declare module '@fontsource/*';
 
+interface PersistentTrack {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  duration: number;
+  fileName: string;
+  filePath: string;
+  artworkUrl?: string;
+  addedAt: number;
+}
+
 interface Window {
   electronAPI?: {
     isElectron: boolean;
@@ -17,7 +29,11 @@ interface Window {
     minimize: () => Promise<void>;
     maximize: () => Promise<void>;
     close: () => Promise<void>;
+    getPathForFile?: (file: File) => string;
     library?: {
+      importSongs: (filePaths?: string[]) => Promise<PersistentTrack[]>;
+      getPlaylist: () => Promise<PersistentTrack[]>;
+      removeSong: (trackIdOrFileName: string) => Promise<PersistentTrack[]>;
       importFiles: (filePaths: string[]) => Promise<{
         tracks: Array<{
           id: string;

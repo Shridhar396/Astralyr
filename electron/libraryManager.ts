@@ -19,6 +19,18 @@ export interface StoredTrack {
   status?: 'ok' | 'missing' | 'needs-readding';
 }
 
+export interface PersistentTrack {
+  id: string; // UUID or unique id
+  title: string;
+  artist: string;
+  album?: string;
+  duration: number; // in seconds
+  fileName: string; // e.g. "<timestamp>-<originalName>" inside userData/library/
+  filePath: string; // Absolute path to file in userData/library/
+  artworkUrl?: string; // "astralyr-media://art/<id>"
+  addedAt: number; // timestamp in ms
+}
+
 export interface LibraryDatabase {
   version: number;
   tracks: Record<string, StoredTrack>;
@@ -29,16 +41,20 @@ export class LibraryManager {
   private libraryDir: string;
   private artDir: string;
   private dbPath: string;
+  private playlistPath: string;
   private db: LibraryDatabase = { version: 1, tracks: {} };
+  private playlist: PersistentTrack[] = [];
 
   private constructor() {
     const userData = app.getPath('userData');
     this.libraryDir = path.join(userData, 'library');
     this.artDir = path.join(this.libraryDir, 'art');
     this.dbPath = path.join(userData, 'library.json');
+    this.playlistPath = path.join(userData, 'playlist.json');
 
     this.ensureDirs();
     this.loadDb();
+    this.loadPlaylist();
   }
 
   public static getInstance(): LibraryManager {
@@ -90,6 +106,432 @@ export class LibraryManager {
     } catch (err) {
       console.error('[LibraryManager] Failed to save library.json:', err);
     }
+  }
+
+  private loadPlaylist(): void {
+    try {
+      if (fs.existsSync(this.playlistPath)) {
+        const raw = fs.readFileSync(this.playlistPath, 'utf-8');
+        this.playlist = JSON.parse(raw);
+        if (!Array.isArray(this.playlist)) this.playlist = [];
+      } else {
+        // If playlist.json does not exist yet, migrate existing tracks from db
+        this.playlist = [];
+        if (this.db && this.db.tracks) {
+          for (const track of Object.values(this.db.tracks)) {
+            const fileName = track.storedFileName;
+            const filePath = path.join(this.libraryDir, fileName);
+            if (fs.existsSync(filePath)) {
+              this.playlist.push({
+                id: track.id,
+                title: track.title,
+                artist: track.artist,
+                album: track.album || 'Local Audio',
+                duration: track.duration,
+                fileName,
+                filePath,
+                artworkUrl: track.artwork,
+                addedAt: track.addedAt || Date.now(),
+              });
+            }
+          }
+        }
+        this.savePlaylist();
+      }
+    } catch (err) {
+      console.warn('[LibraryManager] Failed to load playlist.json, initializing empty:', err);
+      this.playlist = [];
+    }
+  }
+
+  private savePlaylist(): void {
+    try {
+      fs.writeFileSync(this.playlistPath, JSON.stringify(this.playlist, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('[LibraryManager] Failed to save playlist.json:', err);
+    }
+  }
+
+  public getPlaylistPath(): string {
+    return this.playlistPath;
+  }
+
+  /**
+   * Safe media stream protocol handler (supports HTTP 206 partial content,
+   * range requests for seeking, CORS headers for Web Audio AnalyserNode,
+   * and strict directory traversal prevention).
+   */
+  public async handleMediaRequest(request: Request): Promise<Response> {
+    try {
+      const parsedUrl = new URL(request.url);
+      const host = parsedUrl.host;
+      const rawPathname = decodeURIComponent(parsedUrl.pathname);
+
+      // Format 1: astralyr-media://art/<trackId>
+      // Format 2: astralyr-media://track/<fileName>
+      // Format 3: astralyr-media://<trackId>
+      const isArt = host === 'art' || rawPathname.startsWith('/art/');
+      const isTrackByFileName = host === 'track' || rawPathname.startsWith('/track/');
+
+      let targetPath = '';
+      let mimeType = 'audio/mpeg';
+
+      if (isArt) {
+        const artId = (host === 'art' ? rawPathname.replace(/^\//, '') : rawPathname.replace(/^\/art\//, ''))
+          .split('?')[0].replace(/\/$/, '');
+        if (!artId || !/^[a-zA-Z0-9_\-]+$/.test(artId)) {
+          console.warn('[Security] Blocked invalid artwork ID:', artId);
+          return new Response('Forbidden', { status: 403 });
+        }
+        targetPath = path.join(this.artDir, `${artId}.jpg`);
+        mimeType = 'image/jpeg';
+        if (!fs.existsSync(targetPath)) {
+          targetPath = path.join(this.artDir, `${artId}.png`);
+          mimeType = 'image/png';
+        }
+      } else if (isTrackByFileName) {
+        const rawFileName = (host === 'track' ? rawPathname.replace(/^\//, '') : rawPathname.replace(/^\/track\//, ''))
+          .split('?')[0].replace(/\/$/, '');
+        if (rawFileName.includes('..') || rawFileName.includes('/') || rawFileName.includes('\\')) {
+          console.warn('[Security] Path traversal attempt blocked in filename:', rawFileName);
+          return new Response('Forbidden', { status: 403 });
+        }
+        const safeFileName = path.basename(rawFileName);
+        if (!safeFileName || safeFileName === '.' || safeFileName === '..') {
+          console.warn('[Security] Blocked invalid track filename:', rawFileName);
+          return new Response('Forbidden', { status: 403 });
+        }
+        targetPath = path.join(this.libraryDir, safeFileName);
+      } else {
+        // Format 3: astralyr-media://<trackId>
+        const resourceId = (host || rawPathname.replace(/^\//, '')).split('?')[0].replace(/\/$/, '');
+        if (!resourceId || !/^[a-zA-Z0-9_\-]+$/.test(resourceId)) {
+          console.warn('[Security] Blocked invalid media resourceId:', resourceId);
+          return new Response('Forbidden', { status: 403 });
+        }
+
+        // Check playlist.json first
+        const playlist = await this.getPlaylist();
+        const pTrack = playlist.find((t) => t.id === resourceId || t.fileName === resourceId);
+        if (pTrack) {
+          targetPath = pTrack.filePath;
+        } else {
+          const track = this.getTrack(resourceId);
+          if (track && track.storedFileName) {
+            targetPath = path.join(this.libraryDir, track.storedFileName);
+          } else {
+            const files = fs.readdirSync(this.libraryDir);
+            const match = files.find((f) => f.startsWith(resourceId + '.'));
+            if (match) {
+              targetPath = path.join(this.libraryDir, match);
+            }
+          }
+        }
+      }
+
+      // Verify resolved path strictly resides inside libraryDir or artDir
+      const resolvedPath = path.resolve(targetPath);
+      const validRoot = isArt ? path.resolve(this.artDir) : path.resolve(this.libraryDir);
+      if (!resolvedPath.startsWith(validRoot)) {
+        console.warn('[Security] Path traversal attempt blocked:', resolvedPath);
+        return new Response('Forbidden', { status: 403 });
+      }
+
+      if (!fs.existsSync(resolvedPath)) {
+        return new Response('File not found', { status: 404 });
+      }
+
+      const ext = path.extname(resolvedPath).toLowerCase();
+      if (ext === '.mp3') mimeType = 'audio/mpeg';
+      else if (ext === '.m4a' || ext === '.mp4' || ext === '.aac') mimeType = 'audio/mp4';
+      else if (ext === '.flac') mimeType = 'audio/flac';
+      else if (ext === '.wav') mimeType = 'audio/wav';
+      else if (ext === '.ogg') mimeType = 'audio/ogg';
+
+      const stat = fs.statSync(resolvedPath);
+      const rangeHeader = request.headers.get('range');
+
+      if (rangeHeader && !isArt) {
+        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+        if (match) {
+          const start = parseInt(match[1], 10);
+          const end = match[2] ? parseInt(match[2], 10) : stat.size - 1;
+          const chunkSize = end - start + 1;
+          const stream = fs.createReadStream(resolvedPath, { start, end });
+          const webStream = Readable.toWeb(stream);
+
+          return new Response(webStream as any, {
+            status: 206,
+            statusText: 'Partial Content',
+            headers: {
+              'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+              'Accept-Ranges': 'bytes',
+              'Content-Length': String(chunkSize),
+              'Content-Type': mimeType,
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        }
+      }
+
+      const stream = fs.createReadStream(resolvedPath);
+      const webStream = Readable.toWeb(stream);
+
+      return new Response(webStream as any, {
+        status: 200,
+        headers: {
+          'Accept-Ranges': 'bytes',
+          'Content-Length': String(stat.size),
+          'Content-Type': mimeType,
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    } catch (err: any) {
+      console.error('[LibraryManager] handleMediaRequest error:', err);
+      return new Response('Internal error', { status: 500 });
+    }
+  }
+
+  /**
+   * Reads playlist.json, verifies that each track's file exists on disk,
+   * prunes missing entries, and returns the active playlist.
+   */
+  public async getPlaylist(): Promise<PersistentTrack[]> {
+    let changed = false;
+    const validatedPlaylist: PersistentTrack[] = [];
+
+    for (const track of this.playlist) {
+      let exists = false;
+      let actualPath = track.filePath;
+
+      if (actualPath && fs.existsSync(actualPath)) {
+        exists = true;
+      } else {
+        const fallbackPath = path.join(this.libraryDir, track.fileName);
+        if (fs.existsSync(fallbackPath)) {
+          exists = true;
+          actualPath = fallbackPath;
+          if (track.filePath !== actualPath) {
+            track.filePath = actualPath;
+            changed = true;
+          }
+        } else {
+          try {
+            const files = fs.readdirSync(this.libraryDir);
+            const match = files.find((f) => f.startsWith(track.id + '.') || f === track.fileName);
+            if (match) {
+              actualPath = path.join(this.libraryDir, match);
+              track.filePath = actualPath;
+              track.fileName = match;
+              exists = true;
+              changed = true;
+            }
+          } catch {}
+        }
+      }
+
+      if (exists) {
+        validatedPlaylist.push(track);
+      } else {
+        // Missing on disk: prune entry
+        changed = true;
+      }
+    }
+
+    if (changed || validatedPlaylist.length !== this.playlist.length) {
+      this.playlist = validatedPlaylist;
+      this.savePlaylist();
+    }
+
+    return [...this.playlist];
+  }
+
+  /**
+   * Native copy-on-import of audio files into userData/library/<timestamp>-<originalName>
+   * Extracts metadata, updates playlist.json, and returns updated playlist.
+   */
+  public async importSongs(
+    arg1?: string[] | any,
+    arg2?: string[],
+    onProgress?: (progress: { current: number; total: number; filename: string }) => void
+  ): Promise<PersistentTrack[]> {
+    let parentWindow: any = null;
+    let filePaths: string[] | undefined = undefined;
+
+    if (Array.isArray(arg1)) {
+      filePaths = arg1;
+    } else if (arg1 && typeof arg1 === 'object' && !Array.isArray(arg1)) {
+      parentWindow = arg1;
+      if (Array.isArray(arg2)) {
+        filePaths = arg2;
+      }
+    }
+
+    if (!filePaths || filePaths.length === 0) {
+      // Show native Electron file picker dialog
+      try {
+        const { dialog } = require('electron');
+        const res = await dialog.showOpenDialog(parentWindow || undefined, {
+          title: 'Select Audio Files to Add to Playlist',
+          properties: ['openFile', 'multiSelections'],
+          filters: [
+            { name: 'Audio Files', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a', 'mp4', 'aac'] },
+          ],
+        });
+        if (res.canceled || !res.filePaths || res.filePaths.length === 0) {
+          return await this.getPlaylist();
+        }
+        filePaths = res.filePaths;
+      } catch (dialogErr) {
+        console.warn('[LibraryManager] dialog.showOpenDialog error:', dialogErr);
+        return await this.getPlaylist();
+      }
+    }
+
+    if (!filePaths || filePaths.length === 0) {
+      return await this.getPlaylist();
+    }
+
+    const freeSpace = await this.getFreeDiskSpace();
+    if (freeSpace < 500 * 1024 * 1024) {
+      throw new Error('Low disk space: less than 500 MB free on drive.');
+    }
+
+    const total = filePaths.length;
+    for (let i = 0; i < total; i++) {
+      const srcPath = filePaths[i];
+      const origName = path.basename(srcPath);
+
+      if (onProgress) {
+        onProgress({ current: i + 1, total, filename: origName });
+      }
+
+      try {
+        if (!fs.existsSync(srcPath)) continue;
+
+        const stat = await fs.promises.stat(srcPath);
+        const ext = path.extname(srcPath).toLowerCase() || '.mp3';
+        const allowedExts = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.mp4', '.aac'];
+        if (!allowedExts.includes(ext)) continue;
+
+        const fileHash = await this.computeQuickHash(srcPath);
+
+        // Check if duplicate already exists in library
+        const existing = Object.values(this.db.tracks).find((t) => t.fileHash === fileHash);
+        if (existing) {
+          const existingPath = path.join(this.libraryDir, existing.storedFileName);
+          if (fs.existsSync(existingPath)) {
+            // Ensure present in playlist
+            let inPlaylist = this.playlist.find((t) => t.id === existing.id);
+            if (!inPlaylist) {
+              inPlaylist = {
+                id: existing.id,
+                title: existing.title,
+                artist: existing.artist,
+                album: existing.album || 'Local Audio',
+                duration: existing.duration,
+                fileName: existing.storedFileName,
+                filePath: existingPath,
+                artworkUrl: existing.artwork,
+                addedAt: existing.addedAt,
+              };
+              this.playlist.unshift(inPlaylist);
+            }
+            continue;
+          }
+        }
+
+        // Generate collision-safe filename: <timestamp>-<originalName>
+        const rawBase = path.basename(srcPath, ext);
+        const sanitizedBase = rawBase.replace(/[^a-zA-Z0-9_\-]/g, '_');
+        const fileName = `${Date.now()}-${sanitizedBase}${ext}`;
+        const destPath = path.join(this.libraryDir, fileName);
+
+        await fs.promises.copyFile(srcPath, destPath);
+
+        const trackId = crypto.randomUUID();
+        const meta = await this.parseMetadataAndArtwork(destPath, trackId);
+
+        // Fallback artist & title
+        let fallbackArtist = 'Unknown Artist';
+        let fallbackTitle = rawBase;
+        if (rawBase.includes(' - ')) {
+          const parts = rawBase.split(' - ');
+          fallbackArtist = parts[0].trim();
+          fallbackTitle = parts.slice(1).join(' - ').trim();
+        }
+
+        const persistentTrack: PersistentTrack = {
+          id: trackId,
+          title: meta.title || fallbackTitle,
+          artist: meta.artist || fallbackArtist,
+          album: meta.album || 'Local Audio',
+          duration: meta.duration || 180,
+          fileName,
+          filePath: destPath,
+          artworkUrl: meta.hasArtwork ? `astralyr-media://art/${trackId}` : undefined,
+          addedAt: Date.now(),
+        };
+
+        this.playlist.unshift(persistentTrack);
+
+        this.db.tracks[trackId] = {
+          id: trackId,
+          title: persistentTrack.title,
+          artist: persistentTrack.artist,
+          album: persistentTrack.album,
+          duration: persistentTrack.duration,
+          artwork: persistentTrack.artworkUrl,
+          storedFileName: fileName,
+          originalName: origName,
+          size: stat.size,
+          fileHash,
+          addedAt: persistentTrack.addedAt,
+          status: 'ok',
+        };
+      } catch (err) {
+        console.warn(`[LibraryManager] Failed to import ${origName}:`, err);
+      }
+    }
+
+    this.savePlaylist();
+    this.saveDb();
+    return await this.getPlaylist();
+  }
+
+  /**
+   * Remove a song from playlist.json and delete its file from disk.
+   */
+  public async removeSong(trackIdOrFileName: string): Promise<PersistentTrack[]> {
+    const idx = this.playlist.findIndex(
+      (t) => t.id === trackIdOrFileName || t.fileName === trackIdOrFileName || t.filePath === trackIdOrFileName
+    );
+
+    if (idx !== -1) {
+      const [removed] = this.playlist.splice(idx, 1);
+
+      // Unlink audio file
+      try {
+        const p = removed.filePath || path.join(this.libraryDir, removed.fileName);
+        if (fs.existsSync(p)) {
+          await fs.promises.unlink(p);
+        }
+      } catch (e) {
+        console.warn('[LibraryManager] Could not delete audio file:', e);
+      }
+
+      // Unlink artwork
+      try {
+        const artPath = path.join(this.artDir, `${removed.id}.jpg`);
+        if (fs.existsSync(artPath)) await fs.promises.unlink(artPath);
+      } catch {}
+
+      delete this.db.tracks[removed.id];
+      this.savePlaylist();
+      this.saveDb();
+    }
+
+    return await this.getPlaylist();
   }
 
   public getAllTracks(): StoredTrack[] {
@@ -366,6 +808,23 @@ export class LibraryManager {
 
         this.db.tracks[trackId] = track;
         this.saveDb();
+
+        const pIdx = this.playlist.findIndex((t) => t.id === trackId);
+        if (pIdx === -1) {
+          this.playlist.unshift({
+            id: trackId,
+            title: track.title,
+            artist: track.artist,
+            album: track.album || 'Local Audio',
+            duration: track.duration,
+            fileName: storedFileName,
+            filePath: destPath,
+            artworkUrl: track.artwork,
+            addedAt: track.addedAt,
+          });
+          this.savePlaylist();
+        }
+
         tracks.push(track);
       } catch (err: any) {
         console.warn(`[LibraryManager] Failed to import ${filename}:`, err);
@@ -464,6 +923,12 @@ export class LibraryManager {
    * Delete a track and its artwork permanently from disk and library registry
    */
   public async deleteTrack(trackId: string): Promise<boolean> {
+    const pIdx = this.playlist.findIndex((t) => t.id === trackId);
+    if (pIdx !== -1) {
+      this.playlist.splice(pIdx, 1);
+      this.savePlaylist();
+    }
+
     const track = this.db.tracks[trackId];
     if (track) {
       try {
@@ -537,6 +1002,8 @@ export class LibraryManager {
         }
       }
 
+      this.playlist = this.playlist.filter((t) => activeSet.has(t.id));
+      this.savePlaylist();
       this.saveDb();
     } catch (e) {
       console.warn('[LibraryManager] cleanupUnused error:', e);

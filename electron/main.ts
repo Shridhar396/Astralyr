@@ -233,116 +233,27 @@ if (!gotTheLock) {
     const artDir = libraryMgr.getArtDir();
 
     // Register protocol handler for streaming library media & artwork securely
-    const mediaHandler = async (request: Request) => {
-      try {
-        const parsedUrl = new URL(request.url);
-        // Format: <scheme>://<trackId> or <scheme>://art/<trackId>
-        const isArt = parsedUrl.host === 'art' || parsedUrl.pathname.startsWith('/art/');
-        let resourceId = '';
-        if (isArt) {
-          resourceId =
-            parsedUrl.host === 'art'
-              ? parsedUrl.pathname.replace(/^\//, '')
-              : parsedUrl.pathname.replace(/^\/art\//, '');
-        } else {
-          resourceId = parsedUrl.host || parsedUrl.pathname.replace(/^\//, '');
-        }
-
-        resourceId = resourceId.split('?')[0].replace(/\/$/, '');
-
-        // Security check: reject any paths containing "..", "/", "\", or non-alphanumeric chars
-        if (!resourceId || !/^[a-zA-Z0-9_\-]+$/.test(resourceId)) {
-          console.warn('[Security] Blocked invalid media resourceId:', resourceId);
-          return new Response('Forbidden', { status: 403 });
-        }
-
-        let targetPath = '';
-        let mimeType = 'audio/mpeg';
-
-        if (isArt) {
-          targetPath = path.join(artDir, `${resourceId}.jpg`);
-          mimeType = 'image/jpeg';
-          if (!fs.existsSync(targetPath)) {
-            targetPath = path.join(artDir, `${resourceId}.png`);
-            mimeType = 'image/png';
-          }
-        } else {
-          const track = libraryMgr.getTrack(resourceId);
-          if (track && track.storedFileName) {
-            targetPath = path.join(libraryDir, track.storedFileName);
-          } else {
-            const files = fs.readdirSync(libraryDir);
-            const match = files.find((f) => f.startsWith(resourceId + '.'));
-            if (match) {
-              targetPath = path.join(libraryDir, match);
-            }
-          }
-
-          const ext = path.extname(targetPath).toLowerCase();
-          if (ext === '.mp3') mimeType = 'audio/mpeg';
-          else if (ext === '.m4a' || ext === '.mp4' || ext === '.aac') mimeType = 'audio/mp4';
-          else if (ext === '.flac') mimeType = 'audio/flac';
-          else if (ext === '.wav') mimeType = 'audio/wav';
-          else if (ext === '.ogg') mimeType = 'audio/ogg';
-        }
-
-        // Verify resolved path strictly resides inside libraryDir
-        const resolvedPath = path.resolve(targetPath);
-        if (!resolvedPath.startsWith(path.resolve(libraryDir))) {
-          console.warn('[Security] Path traversal attempt blocked:', resolvedPath);
-          return new Response('Forbidden', { status: 403 });
-        }
-
-        if (!fs.existsSync(resolvedPath)) {
-          return new Response('File not found', { status: 404 });
-        }
-
-        const stat = fs.statSync(resolvedPath);
-        const rangeHeader = request.headers.get('range');
-
-        if (rangeHeader && !isArt) {
-          const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
-          if (match) {
-            const start = parseInt(match[1], 10);
-            const end = match[2] ? parseInt(match[2], 10) : stat.size - 1;
-            const chunkSize = end - start + 1;
-            const stream = fs.createReadStream(resolvedPath, { start, end });
-            const webStream = Readable.toWeb(stream);
-
-            return new Response(webStream as any, {
-              status: 206,
-              statusText: 'Partial Content',
-              headers: {
-                'Content-Range': `bytes ${start}-${end}/${stat.size}`,
-                'Accept-Ranges': 'bytes',
-                'Content-Length': String(chunkSize),
-                'Content-Type': mimeType,
-                'Access-Control-Allow-Origin': '*',
-              },
-            });
-          }
-        }
-
-        const stream = fs.createReadStream(resolvedPath);
-        const webStream = Readable.toWeb(stream);
-
-        return new Response(webStream as any, {
-          status: 200,
-          headers: {
-            'Accept-Ranges': 'bytes',
-            'Content-Length': String(stat.size),
-            'Content-Type': mimeType,
-            'Access-Control-Allow-Origin': '*',
-          },
-        });
-      } catch (err: any) {
-        console.error('[astralyr-media] Protocol error:', err);
-        return new Response('Internal error', { status: 500 });
-      }
-    };
+    const mediaHandler = (request: Request) => libraryMgr.handleMediaRequest(request);
 
     protocol.handle('astralyr-media', mediaHandler);
     protocol.handle('constella-media', mediaHandler);
+
+    // Persistent Playlist & Library IPC Handlers
+    ipcMain.handle('library:import-songs', async (_event, filePaths?: string[]) => {
+      return await libraryMgr.importSongs(mainWindow, filePaths, (progress) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('library:import-progress', progress);
+        }
+      });
+    });
+
+    ipcMain.handle('library:get-playlist', async () => {
+      return await libraryMgr.getPlaylist();
+    });
+
+    ipcMain.handle('library:remove-song', async (_event, trackIdOrFileName: string) => {
+      return await libraryMgr.removeSong(trackIdOrFileName);
+    });
 
     // Library IPC Handlers
     ipcMain.handle('library:import-files', async (_event, filePaths: string[]) => {

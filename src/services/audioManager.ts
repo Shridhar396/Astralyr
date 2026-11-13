@@ -149,8 +149,15 @@ export class AudioManager {
       }
     }
 
-    // For blob: and local files, avoid setting crossOrigin to prevent CORS rejection on local URLs
-    if (isLocal || url.startsWith('blob:') || url.startsWith('/') || url.startsWith('data:')) {
+    // For local files and custom media protocols, avoid setting crossOrigin to prevent CORS rejection on local URLs
+    if (
+      isLocal ||
+      url.startsWith('blob:') ||
+      url.startsWith('/') ||
+      url.startsWith('data:') ||
+      url.startsWith('astralyr-media:') ||
+      url.startsWith('constella-media:')
+    ) {
       this.audio.removeAttribute('crossorigin');
     } else {
       this.audio.crossOrigin = 'anonymous';
