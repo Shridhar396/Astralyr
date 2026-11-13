@@ -1,9 +1,9 @@
 {
-  "name": "constella",
-  "productName": "Constella",
-  "description": "your music, as a constellation",
+  "name": "astralyr",
+  "productName": "Astralyr",
+  "description": "Astralyr — your music, as a constellation: synced lyrics + ambient light",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.1.0",
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {

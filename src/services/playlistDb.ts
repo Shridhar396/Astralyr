@@ -29,7 +29,8 @@ export interface Playlist {
 
 export type PlaylistSortOption = 'updated' | 'name' | 'created';
 
-const DB_NAME = 'constella_library_db';
+const DB_NAME = 'astralyr_library_db';
+const LEGACY_DB_NAME = 'constella_library_db';
 const DB_VERSION = 1;
 const PLAYLISTS_STORE = 'playlists';
 const SETTINGS_STORE = 'settings';
@@ -59,8 +60,14 @@ class PlaylistDbService {
         }
       };
 
-      request.onsuccess = () => {
+      request.onsuccess = async () => {
         const db = request.result;
+        try {
+          await this.migrateFromLegacyDb(db);
+        } catch (e) {
+          console.warn('[Astralyr] Non-fatal legacy DB migration error:', e);
+        }
+
         // Ensure default 'Favorites' playlist exists
         this.ensureDefaultFavorites(db)
           .then(() => resolve(db))
@@ -68,12 +75,74 @@ class PlaylistDbService {
       };
 
       request.onerror = () => {
-        console.error('Failed to open Constella Playlist IndexedDB:', request.error);
+        console.error('Failed to open Astralyr Playlist IndexedDB:', request.error);
         reject(request.error);
       };
     });
 
     return this.dbPromise;
+  }
+
+  private async migrateFromLegacyDb(newDb: IDBDatabase): Promise<void> {
+    if (typeof window === 'undefined' || !window.indexedDB) return;
+    const migrationDoneKey = 'astralyr_idb_migrated';
+    if (localStorage.getItem(migrationDoneKey)) return;
+
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(LEGACY_DB_NAME);
+        req.onsuccess = () => {
+          const legacyDb = req.result;
+          if (!legacyDb.objectStoreNames.contains(PLAYLISTS_STORE)) {
+            legacyDb.close();
+            localStorage.setItem(migrationDoneKey, 'true');
+            return resolve();
+          }
+
+          const legacyTx = legacyDb.transaction(PLAYLISTS_STORE, 'readonly');
+          const legacyStore = legacyTx.objectStore(PLAYLISTS_STORE);
+          const getAllReq = legacyStore.getAll();
+
+          getAllReq.onsuccess = () => {
+            const oldPlaylists: Playlist[] = getAllReq.result || [];
+            legacyDb.close();
+
+            if (oldPlaylists.length > 0) {
+              const writeTx = newDb.transaction([PLAYLISTS_STORE], 'readwrite');
+              const writeStore = writeTx.objectStore(PLAYLISTS_STORE);
+              for (const pl of oldPlaylists) {
+                writeStore.put(pl);
+              }
+              writeTx.oncomplete = () => {
+                localStorage.setItem(migrationDoneKey, 'true');
+                resolve();
+              };
+              writeTx.onerror = () => {
+                localStorage.setItem(migrationDoneKey, 'true');
+                resolve();
+              };
+            } else {
+              localStorage.setItem(migrationDoneKey, 'true');
+              resolve();
+            }
+          };
+
+          getAllReq.onerror = () => {
+            legacyDb.close();
+            localStorage.setItem(migrationDoneKey, 'true');
+            resolve();
+          };
+        };
+
+        req.onerror = () => {
+          localStorage.setItem(migrationDoneKey, 'true');
+          resolve();
+        };
+      } catch {
+        localStorage.setItem(migrationDoneKey, 'true');
+        resolve();
+      }
+    });
   }
 
   private async ensureDefaultFavorites(db: IDBDatabase): Promise<void> {

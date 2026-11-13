@@ -125,7 +125,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<PlaylistSortOption>(() => {
     try {
-      const saved = localStorage.getItem('constella_playlist_sort');
+      const saved = localStorage.getItem('astralyr_playlist_sort') || localStorage.getItem('constella_playlist_sort');
       return (saved as PlaylistSortOption) || 'updated';
     } catch {
       return 'updated';
@@ -235,7 +235,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
   const handleSortChange = (opt: PlaylistSortOption) => {
     setSortOption(opt);
     try {
-      localStorage.setItem('constella_playlist_sort', opt);
+      localStorage.setItem('astralyr_playlist_sort', opt);
     } catch {}
   };
 
@@ -772,7 +772,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                                       storedFileName: res.storedFileName,
                                       duration: res.duration,
                                       artworkUrl: res.artwork,
-                                      audioUrl: `constella-media://${res.id}`,
+                                      audioUrl: `astralyr-media://${res.id}`,
                                     });
                                     await reloadPlaylists();
                                     onShowToast(`Located and updated "${res.title}"`);
@@ -812,7 +812,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                                       storedFileName: res.storedFileName,
                                       duration: res.duration,
                                       artworkUrl: res.artwork,
-                                      audioUrl: `constella-media://${res.id}`,
+                                      audioUrl: `astralyr-media://${res.id}`,
                                     });
                                     await reloadPlaylists();
                                     onShowToast(`Re-added "${res.title}" to Library`);

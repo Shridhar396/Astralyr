@@ -419,6 +419,7 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
             </button>
 
             <button
+              id="transport-play-btn"
               onClick={onTogglePlay}
               className="p-2 rounded-full text-black bg-white hover:bg-white/90 shadow transition-transform active:scale-95 font-bold"
               title={playbackState === 'playing' ? 'Pause' : 'Play'}
@@ -496,11 +497,11 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
               <span className="hidden sm:inline">Appearance</span>
             </button>
 
-            {/* About Constella Button */}
+            {/* About Astralyr Button */}
             <button
               onClick={onOpenAbout}
               className="px-2.5 py-1.5 rounded-xl flex items-center space-x-1.5 bg-white/5 border border-white/10 hover:bg-white/15 text-white/80 hover:text-white transition-all text-[11px] font-medium"
-              title="About Constella"
+              title="About Astralyr"
             >
               <Info className="w-3.5 h-3.5 text-white/80" />
               <span className="hidden sm:inline">About</span>

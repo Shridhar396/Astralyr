@@ -1,4 +1,5 @@
 import { RadioStation, PlaybackState, AudioVisualizerData } from '../types/radio';
+import { BeatEngine, BeatState } from '../audio/beat';
 
 export class AudioManager {
   private static instance: AudioManager | null = null;
@@ -12,18 +13,18 @@ export class AudioManager {
   private volume: number = 0.9;
   private isMuted: boolean = false;
 
-  private readonly FFT_SIZE = 128;
-  private readonly BIN_COUNT = 64;
-  private frequencyArray: Uint8Array = new Uint8Array(64);
-  private timeDomainArray: Uint8Array = new Uint8Array(128);
+  private readonly FFT_SIZE = 1024;
+  private readonly BIN_COUNT = 512;
+  private readonly LEGACY_BIN_COUNT = 64;
+  private frequencyArray: Uint8Array = new Uint8Array(512);
+  private legacyFrequencyArray: Uint8Array = new Uint8Array(64);
+  private timeDomainArray: Uint8Array = new Uint8Array(1024);
+  private legacyTimeDomainArray: Uint8Array = new Uint8Array(128);
+
+  private beatEngine: BeatEngine = new BeatEngine({ sampleRate: 44100, fftSize: 1024, sensitivity: 65 });
 
   private simulatedTime: number = 0;
   private lastTimeUpdate: number = performance.now();
-
-  private energyHistory: number[] = [];
-  private readonly HISTORY_SIZE = 30;
-  private lastBeatTime = 0;
-  private beatDecay = 0;
 
   private stateListeners: Set<(state: PlaybackState) => void> = new Set();
   private errorListeners: Set<(err: string) => void> = new Set();
@@ -99,9 +100,14 @@ export class AudioManager {
 
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = this.FFT_SIZE;
-      this.analyser.smoothingTimeConstant = 0.82;
+      this.analyser.smoothingTimeConstant = 0.8;
       this.analyser.minDecibels = -90;
       this.analyser.maxDecibels = -10;
+
+      // Update beat engine sample rate if different
+      if (this.audioContext.sampleRate) {
+        this.beatEngine.sampleRate = this.audioContext.sampleRate;
+      }
 
       this.gainNode = this.audioContext.createGain();
       this.gainNode.gain.setValueAtTime(this.isMuted ? 0 : this.volume, this.audioContext.currentTime);
@@ -134,6 +140,14 @@ export class AudioManager {
     this.lastTimeUpdate = performance.now();
 
     this.audio.pause();
+
+    // Resolve relative root paths with BASE_URL if applicable
+    if (url.startsWith('/') && typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) {
+      const base = import.meta.env.BASE_URL;
+      if (!url.startsWith(base)) {
+        url = (base + url.replace(/^\/+/, '')).replace('//', '/');
+      }
+    }
 
     // For blob: and local files, avoid setting crossOrigin to prevent CORS rejection on local URLs
     if (isLocal || url.startsWith('blob:') || url.startsWith('/') || url.startsWith('data:')) {
@@ -285,50 +299,65 @@ export class AudioManager {
     return this.playbackState;
   }
 
-  public getVisualizerData(sensitivity: number = 1.35): AudioVisualizerData {
-    if (this.analyser && this.playbackState === 'playing') {
+  public getBeatEngine(): BeatEngine {
+    return this.beatEngine;
+  }
+
+  public getBeatState(): BeatState {
+    return this.beatEngine.getState();
+  }
+
+  public getAnalyserNode(): AnalyserNode | null {
+    return this.analyser;
+  }
+
+  public getAudioContext(): AudioContext | null {
+    return this.audioContext;
+  }
+
+  public getVisualizerData(sensitivity: number = 65): AudioVisualizerData {
+    const isPlaying = this.analyser && this.playbackState === 'playing';
+
+    if (isPlaying) {
       (this.analyser as unknown as { getByteFrequencyData: (arr: Uint8Array) => void }).getByteFrequencyData(
         this.frequencyArray
       );
       (this.analyser as unknown as { getByteTimeDomainData: (arr: Uint8Array) => void }).getByteTimeDomainData(
         this.timeDomainArray
       );
+
+      // Downsample 512 bins to 64 bins for legacy visualizer components
+      const step = this.BIN_COUNT / this.LEGACY_BIN_COUNT; // 8
+      for (let i = 0; i < this.LEGACY_BIN_COUNT; i++) {
+        let sum = 0;
+        const start = i * step;
+        for (let j = 0; j < step; j++) {
+          sum += this.frequencyArray[start + j];
+        }
+        this.legacyFrequencyArray[i] = Math.round(sum / step);
+      }
+
+      const tdStep = this.FFT_SIZE / 128; // 8
+      for (let i = 0; i < 128; i++) {
+        this.legacyTimeDomainArray[i] = this.timeDomainArray[i * tdStep];
+      }
     } else {
       const now = performance.now() * 0.002;
       for (let i = 0; i < this.BIN_COUNT; i++) {
+        this.frequencyArray[i] = 0;
+      }
+      for (let i = 0; i < this.LEGACY_BIN_COUNT; i++) {
         const wave = Math.sin(now + i * 0.15) * 22 + Math.cos(now * 0.7 - i * 0.08) * 16 + 25;
-        this.frequencyArray[i] = Math.max(0, Math.min(255, wave));
-        this.timeDomainArray[i] = 128 + Math.sin(now * 2 + i * 0.1) * 8;
+        this.legacyFrequencyArray[i] = Math.max(0, Math.min(255, wave));
+        this.legacyTimeDomainArray[i] = 128 + Math.sin(now * 2 + i * 0.1) * 8;
       }
     }
 
-    // Sub-bass energy (0–60Hz: bins 0 & 1)
-    const subBassEnergy = (this.frequencyArray[0] * 0.65 + this.frequencyArray[1] * 0.35) / 255;
+    // Process BeatEngine
+    this.beatEngine.setSensitivity(sensitivity);
+    const nowSec = performance.now() / 1000;
+    const beatState = this.beatEngine.process(this.frequencyArray, nowSec);
 
-    // Bass energy (bins 0-6: 20Hz-220Hz)
-    let bassSum = 0;
-    const bassBins = Math.min(8, this.BIN_COUNT);
-    for (let i = 0; i < bassBins; i++) {
-      bassSum += this.frequencyArray[i];
-    }
-    const bassEnergy = bassSum / (bassBins * 255);
-
-    // Mid energy
-    let midSum = 0;
-    const midEnd = Math.min(24, this.BIN_COUNT);
-    for (let i = bassBins; i < midEnd; i++) {
-      midSum += this.frequencyArray[i];
-    }
-    const midEnergy = midSum / ((midEnd - bassBins) * 255);
-
-    // Treble energy
-    let trebleSum = 0;
-    for (let i = midEnd; i < this.BIN_COUNT; i++) {
-      trebleSum += this.frequencyArray[i];
-    }
-    const trebleEnergy = trebleSum / ((this.BIN_COUNT - midEnd) * 255);
-
-    // Average total & peak
     let totalSum = 0;
     let peakVal = 0;
     for (let i = 0; i < this.BIN_COUNT; i++) {
@@ -337,39 +366,18 @@ export class AudioManager {
       if (val > peakVal) peakVal = val;
     }
     const avgFreq = totalSum / (this.BIN_COUNT * 255);
-    const nowMs = performance.now();
-
-    // Beat Detection
-    this.energyHistory.push(bassEnergy);
-    if (this.energyHistory.length > this.HISTORY_SIZE) {
-      this.energyHistory.shift();
-    }
-
-    const avgHistoryEnergy =
-      this.energyHistory.reduce((a, b) => a + b, 0) / (this.energyHistory.length || 1);
-
-    let isBeat = false;
-    if (bassEnergy > avgHistoryEnergy * sensitivity && bassEnergy > 0.22) {
-      if (nowMs - this.lastBeatTime > 260) {
-        isBeat = true;
-        this.lastBeatTime = nowMs;
-        this.beatDecay = 1.0;
-      }
-    }
-
-    this.beatDecay = Math.max(0, this.beatDecay - 0.05);
     const peakDb = peakVal > 0 ? Math.round(20 * Math.log10(peakVal / 255)) : -90;
 
     return {
-      frequencyData: this.frequencyArray,
-      timeData: this.timeDomainArray,
-      binCount: this.BIN_COUNT,
+      frequencyData: this.legacyFrequencyArray,
+      timeData: this.legacyTimeDomainArray,
+      binCount: this.LEGACY_BIN_COUNT,
       averageFrequency: avgFreq,
-      subBassEnergy,
-      bassEnergy,
-      midEnergy,
-      trebleEnergy,
-      isBeat: isBeat || this.beatDecay > 0.6,
+      subBassEnergy: beatState.smoothedSubBass,
+      bassEnergy: beatState.smoothedBass,
+      midEnergy: beatState.smoothedMids,
+      trebleEnergy: beatState.smoothedHighs,
+      isBeat: beatState.isBeat,
       peakDb,
     };
   }

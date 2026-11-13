@@ -36,3 +36,4 @@ reference/
 # Local screenshots and scratch artifacts
 screenshot-*.png
 *.tmp
+scratch/

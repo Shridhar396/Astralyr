@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { LyricLine } from '../types/lyrics';
 import { AudioVisualizerData } from '../types/radio';
+import { BeatState } from '../audio/beat';
 import {
   AppearanceConfig,
   DEFAULT_APPEARANCE_CONFIG,
@@ -16,6 +17,7 @@ interface ConstellationLyricEngineProps {
   accentRgbRef?: React.MutableRefObject<[number, number, number]>;
   accentColor?: string;
   appearanceConfig?: AppearanceConfig;
+  getBeatState?: () => BeatState;
 }
 
 interface ConstellationNode {
@@ -36,6 +38,20 @@ interface ConstellationBranch {
   from: number;
   to: number;
   progress: number;
+}
+
+interface WordRippleItem {
+  active: boolean;
+  x: number;
+  y: number;
+  startTime: number;
+  duration: number;
+  ringsCount: number;
+  bassFactor: number;
+  color: 'accent' | 'white';
+  style: 'rings' | 'pulse-only' | 'rings-pulse';
+  sizeScale: number;
+  shimmer: boolean;
 }
 
 // 53-bit string hash for deterministic layout seed
@@ -68,6 +84,7 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
   accentRgbRef,
   accentColor = '#ffffff',
   appearanceConfig,
+  getBeatState,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const getTimeRef = useRef(getCurrentTime);
@@ -79,6 +96,18 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
   const lastActiveTimeRef = useRef<number>(0);
   const appearanceConfigRef = useRef(appearanceConfig);
   appearanceConfigRef.current = appearanceConfig;
+  const getBeatStateRef = useRef(getBeatState);
+  getBeatStateRef.current = getBeatState;
+
+  // Word Ripple object pool (max 4 alive, zero hot-loop allocations)
+  const ripplesPoolRef = useRef<WordRippleItem[]>([
+    { active: false, x: 0, y: 0, startTime: 0, duration: 1.4, ringsCount: 3, bassFactor: 1.0, color: 'accent', style: 'rings-pulse', sizeScale: 1.0, shimmer: false },
+    { active: false, x: 0, y: 0, startTime: 0, duration: 1.4, ringsCount: 3, bassFactor: 1.0, color: 'accent', style: 'rings-pulse', sizeScale: 1.0, shimmer: false },
+    { active: false, x: 0, y: 0, startTime: 0, duration: 1.4, ringsCount: 3, bassFactor: 1.0, color: 'accent', style: 'rings-pulse', sizeScale: 1.0, shimmer: false },
+    { active: false, x: 0, y: 0, startTime: 0, duration: 1.4, ringsCount: 3, bassFactor: 1.0, color: 'accent', style: 'rings-pulse', sizeScale: 1.0, shimmer: false },
+  ]);
+  const lastActiveWordRef = useRef<{ lineIdx: number; wordIdx: number }>({ lineIdx: -1, wordIdx: -1 });
+  const lastWordSpawnTimeRef = useRef<number>(0);
 
   // Lazy load selected font locally
   useEffect(() => {
@@ -199,6 +228,10 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
     nodesRef.current = [];
     lineProgressRef.current = [];
     branchesRef.current = [];
+    for (let i = 0; i < ripplesPoolRef.current.length; i++) {
+      ripplesPoolRef.current[i].active = false;
+    }
+    lastActiveWordRef.current = { lineIdx: -1, wordIdx: -1 };
   }, [lines]);
 
   // 60FPS Canvas Render Loop
@@ -299,10 +332,6 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
 
         // Read dynamic accent RGB (updates live at 60fps even during Auto Cycle)
         const [ar, ag, ab] = accentRgbRef?.current || [255, 255, 255];
-        // 10% tint on connecting lines for the current line
-        const lineR = Math.round(255 * 0.9 + ar * 0.1);
-        const lineG = Math.round(255 * 0.9 + ag * 0.1);
-        const lineB = Math.round(255 * 0.9 + ab * 0.1);
 
         // Determine which words are revealed, which is active, which are past
         // Never show future words! (Rule 6)
@@ -322,6 +351,68 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
         const pastSize = appCfg.lyricsPastSize || 13;
         const lyricsFontFamily = getFontFamily(appCfg.lyricsFont || 'sf-style');
         const lyricsCase = appCfg.lyricsCase || 'original';
+
+        // Tinting & Ripple flags
+        const isTinted = appCfg.tintLyricsWithAccent !== false;
+        const isRippleOn = appCfg.rippleEnabled !== false;
+
+        // Trigger Word Ripple on active word transition
+        if (activeWordIdx !== -1 && nodes[activeWordIdx]) {
+          if (
+            activeLineIdx !== lastActiveWordRef.current.lineIdx ||
+            activeWordIdx !== lastActiveWordRef.current.wordIdx
+          ) {
+            lastActiveWordRef.current = { lineIdx: activeLineIdx, wordIdx: activeWordIdx };
+
+            if (isRippleOn) {
+              const timeSinceLast = Math.abs(activeTime - lastWordSpawnTimeRef.current);
+              lastWordSpawnTimeRef.current = activeTime;
+
+              const isFast = timeSinceLast < 0.15;
+              const rStyle = appCfg.rippleStyle || 'rings-pulse';
+              const ringsCount = rStyle === 'pulse-only' ? 0 : (isFast ? 1 : 3);
+
+              const beatState = getBeatStateRef.current ? getBeatStateRef.current() : null;
+              const smoothedBass = beatState ? Math.max(0, Math.min(1.0, beatState.smoothedBass)) : 0;
+              const bassFactor = Math.max(1.0, Math.min(1.6, 1.0 + 0.5 * smoothedBass));
+
+              const speed = Math.max(0.5, Math.min(2.0, appCfg.rippleSpeed || 1.0));
+              const sizeScale = Math.max(0.5, Math.min(2.0, appCfg.rippleSize || 1.0));
+
+              const pool = ripplesPoolRef.current;
+              let targetSlot = pool.find((r) => !r.active);
+              if (!targetSlot) {
+                let oldestTime = Infinity;
+                for (let ri = 0; ri < pool.length; ri++) {
+                  if (pool[ri].startTime < oldestTime) {
+                    oldestTime = pool[ri].startTime;
+                    targetSlot = pool[ri];
+                  }
+                }
+              }
+
+              if (targetSlot) {
+                targetSlot.active = true;
+                targetSlot.x = nodes[activeWordIdx].x;
+                targetSlot.y = nodes[activeWordIdx].y;
+                targetSlot.startTime = activeTime;
+                targetSlot.duration = 1.4 / speed;
+                targetSlot.ringsCount = ringsCount;
+                targetSlot.bassFactor = bassFactor;
+                targetSlot.color = appCfg.rippleColor || 'accent';
+                targetSlot.style = rStyle;
+                targetSlot.sizeScale = sizeScale;
+                targetSlot.shimmer = Boolean(appCfg.rippleShimmer);
+              }
+            }
+          }
+        }
+
+        // Connecting lines colors (tinted vs neutral)
+        const lineR = isTinted ? ar : Math.round(255 * 0.9 + ar * 0.1);
+        const lineG = isTinted ? ag : Math.round(255 * 0.9 + ag * 0.1);
+        const lineB = isTinted ? ab : Math.round(255 * 0.9 + ab * 0.1);
+        const lineAlpha = isTinted ? 0.35 : 0.22;
 
         // --- STEP A: Progressive Connecting Lines (Rule 8) ---
         // Lyric order lines draw in progressively as each new word arrives
@@ -346,7 +437,7 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
               ctx.beginPath();
               ctx.moveTo(prev.x, prev.y);
               ctx.lineTo(destX, destY);
-              ctx.strokeStyle = `rgba(${lineR}, ${lineG}, ${lineB}, 0.22)`;
+              ctx.strokeStyle = `rgba(${lineR}, ${lineG}, ${lineB}, ${lineAlpha})`;
               ctx.lineWidth = 1;
               ctx.stroke();
             }
@@ -371,7 +462,7 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
                 ctx.beginPath();
                 ctx.moveTo(nodeA.x, nodeA.y);
                 ctx.lineTo(destX, destY);
-                ctx.strokeStyle = `rgba(${lineR}, ${lineG}, ${lineB}, 0.16)`;
+                ctx.strokeStyle = `rgba(${lineR}, ${lineG}, ${lineB}, ${isTinted ? 0.25 : 0.16})`;
                 ctx.lineWidth = 1;
                 ctx.stroke();
               }
@@ -379,7 +470,81 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
           }
         }
 
-        // --- STEP B: Vertical Stems & Node Elements ---
+        // --- STEP B: Word Ripples (Concentric rings + soft-light pulse behind words) ---
+        const ripples = ripplesPoolRef.current;
+        for (let ri = 0; ri < ripples.length; ri++) {
+          const r = ripples[ri];
+          if (!r.active) continue;
+
+          const elapsed = activeTime - r.startTime;
+          if (elapsed < 0 || elapsed > r.duration + 0.3) {
+            r.active = false;
+            continue;
+          }
+
+          const ripR = r.color === 'white' ? 255 : ar;
+          const ripG = r.color === 'white' ? 255 : ag;
+          const ripB = r.color === 'white' ? 255 : ab;
+
+          // 1. Soft-light pulse behind word (in 200ms, out 900ms)
+          if (r.style === 'pulse-only' || r.style === 'rings-pulse') {
+            if (elapsed <= 1.1) {
+              let pulseAlpha = 0;
+              if (elapsed < 0.2) {
+                pulseAlpha = (elapsed / 0.2) * 0.35 * r.bassFactor;
+              } else {
+                pulseAlpha = Math.max(0, 1 - (elapsed - 0.2) / 0.9) * 0.35 * r.bassFactor;
+              }
+
+              if (pulseAlpha > 0.01) {
+                const pulseR = 60 * r.sizeScale * r.bassFactor;
+                const grad = ctx.createRadialGradient(r.x, r.y, 0, r.x, r.y, pulseR);
+                grad.addColorStop(0, `rgba(${ripR}, ${ripG}, ${ripB}, ${pulseAlpha * 0.45})`);
+                grad.addColorStop(0.5, `rgba(${ripR}, ${ripG}, ${ripB}, ${pulseAlpha * 0.18})`);
+                grad.addColorStop(1, `rgba(${ripR}, ${ripG}, ${ripB}, 0)`);
+                ctx.beginPath();
+                ctx.arc(r.x, r.y, pulseR, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+              }
+            }
+          }
+
+          // 2. Concentric rings (8px -> 240px over ~1.4s ease-out)
+          if (r.style === 'rings' || r.style === 'rings-pulse') {
+            for (let k = 0; k < r.ringsCount; k++) {
+              const ringElapsed = elapsed - k * 0.12;
+              const t = ringElapsed / r.duration;
+              if (t >= 0 && t <= 1.0) {
+                const easeOut = 1 - Math.pow(1 - t, 3);
+                const radius = (8 + (240 - 8) * easeOut) * r.sizeScale * r.bassFactor;
+                const ringAlpha = Math.min(0.75, 0.5 * (1 - easeOut) * r.bassFactor);
+
+                if (ringAlpha > 0.01) {
+                  ctx.beginPath();
+                  ctx.arc(r.x, r.y, radius, 0, Math.PI * 2);
+                  ctx.strokeStyle = `rgba(${ripR}, ${ripG}, ${ripB}, ${ringAlpha})`;
+                  ctx.lineWidth = 1.5;
+                  ctx.stroke();
+
+                  if (r.shimmer) {
+                    for (let s = 0; s < 4; s++) {
+                      const ang = easeOut * Math.PI + (s * Math.PI) / 2;
+                      const sx = r.x + Math.cos(ang) * radius;
+                      const sy = r.y + Math.sin(ang) * radius;
+                      ctx.beginPath();
+                      ctx.arc(sx, sy, 1.2, 0, Math.PI * 2);
+                      ctx.fillStyle = `rgba(255, 255, 255, ${ringAlpha * 0.5})`;
+                      ctx.fill();
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // --- STEP C: Vertical Stems & Node Elements ---
         for (let i = 0; i < N; i++) {
           const n = nodes[i];
           const isRevealed = activeTime >= n.startTime;
@@ -441,9 +606,13 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
             ctx.save();
             ctx.beginPath();
             ctx.arc(n.x, n.y, ringR, 0, Math.PI * 2);
-            ctx.strokeStyle = `rgba(${ar}, ${ag}, ${ab}, ${n.currentRingAlpha * 0.95})`;
+            ctx.strokeStyle = isTinted
+              ? `rgba(${ar}, ${ag}, ${ab}, ${n.currentRingAlpha * 0.95})`
+              : `rgba(255, 255, 255, ${n.currentRingAlpha * 0.95})`;
             ctx.lineWidth = 1;
-            ctx.shadowColor = `rgba(${ar}, ${ag}, ${ab}, 0.65)`;
+            ctx.shadowColor = isTinted
+              ? `rgba(${ar}, ${ag}, ${ab}, 0.65)`
+              : 'rgba(255, 255, 255, 0.65)';
             ctx.shadowBlur = 8;
             ctx.stroke();
             ctx.restore();
@@ -452,16 +621,22 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
           // 3. Four-point sparkle star (✦)
           if (showStars) {
             ctx.save();
-            ctx.fillStyle = `rgba(255, 255, 255, ${n.currentOpacity})`;
             if (isActive) {
-              ctx.shadowColor = `rgba(${ar}, ${ag}, ${ab}, 0.85)`;
+              ctx.fillStyle = '#ffffff';
+              ctx.shadowColor = isTinted
+                ? `rgba(${ar}, ${ag}, ${ab}, 0.85)`
+                : 'rgba(255, 255, 255, 0.85)';
               ctx.shadowBlur = 10;
+            } else {
+              ctx.fillStyle = isTinted
+                ? `rgba(${ar}, ${ag}, ${ab}, ${n.currentOpacity * 0.75})`
+                : `rgba(255, 255, 255, ${n.currentOpacity})`;
             }
             drawSparkleStar(n.x, n.y, n.currentStarRadius);
             ctx.restore();
           }
 
-          // 4. Word Label beside Star (Rule 5 & 7): Active word text stays white!
+          // 4. Word Label beside Star (Active word text stays white; past words tinted at 50% opacity)
           ctx.save();
           const labelX = showStars ? (n.x + (isActive ? 15 : 10)) : n.x;
           const labelY = n.y + (isActive ? 13 : 4);
@@ -469,14 +644,23 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
           const weight = isActive ? activeWeight.toString() : '300';
           const sizePx = Math.max(9, Math.round(n.currentFontSize));
           ctx.font = `${weight} ${sizePx}px ${lyricsFontFamily}`;
-          ctx.fillStyle = isActive ? '#ffffff' : `rgba(255, 255, 255, ${n.currentOpacity})`;
-          ctx.textBaseline = 'alphabetic';
-          ctx.textAlign = 'left';
 
           if (isActive) {
-            ctx.shadowColor = 'rgba(255, 255, 255, 0.45)';
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowColor = isTinted
+              ? `rgba(${ar}, ${ag}, ${ab}, 0.65)`
+              : 'rgba(255, 255, 255, 0.45)';
             ctx.shadowBlur = 12;
+          } else if (isPast) {
+            // Previous words use the accent at about 50% opacity
+            ctx.fillStyle = isTinted
+              ? `rgba(${ar}, ${ag}, ${ab}, ${n.currentOpacity * 0.5})`
+              : `rgba(255, 255, 255, ${n.currentOpacity})`;
+          } else {
+            ctx.fillStyle = `rgba(255, 255, 255, ${n.currentOpacity})`;
           }
+          ctx.textBaseline = 'alphabetic';
+          ctx.textAlign = 'left';
 
           let displayWord = n.word;
           if (lyricsCase === 'lowercase') displayWord = n.word.toLowerCase();

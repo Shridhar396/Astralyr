@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 // Create temporary directory for tests
-const testUserData = path.join(os.tmpdir(), 'constella-test-' + Date.now());
+const testUserData = path.join(os.tmpdir(), 'astralyr-test-' + Date.now());
 
 vi.mock('electron', () => ({
   app: {
@@ -153,7 +153,7 @@ describe('Desktop Music Library Manager', () => {
     expect(exportResult.success).toBe(true);
 
     const backupSubDirs = fs.readdirSync(backupDir);
-    const backupFolder = backupSubDirs.find((d) => d.startsWith('Constella_Library_Backup_'));
+    const backupFolder = backupSubDirs.find((d) => d.startsWith('Astralyr_Library_Backup_'));
     expect(backupFolder).toBeDefined();
 
     const fullBackupPath = path.join(backupDir, backupFolder!);

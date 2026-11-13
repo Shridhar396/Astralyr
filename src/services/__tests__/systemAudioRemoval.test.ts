@@ -44,10 +44,10 @@ describe('System Audio Feature Removal Verification', () => {
     expect(viteEnvTs).not.toContain('decryptSecret');
   });
 
-  it('confirms package.json does not copy smtc_daemon and has bumped version to 1.0.3', () => {
+  it('confirms package.json does not copy smtc_daemon and has valid version', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf-8'));
 
-    expect(pkg.version).toBe('1.0.3');
+    expect(pkg.version).toBe('1.1.0');
     expect(pkg.scripts['build:electron']).not.toContain('smtc_daemon');
   });
 
@@ -111,10 +111,10 @@ describe('System Audio Feature Removal Verification', () => {
     expect(appTsx).toContain("localStorage.removeItem('constella_last_source')");
   });
 
-  it('confirms AboutModal.tsx displays v1.0.3', () => {
+  it('confirms AboutModal.tsx displays current version', () => {
     const aboutTsx = fs.readFileSync(path.join(rootDir, 'src/components/AboutModal.tsx'), 'utf-8');
 
-    expect(aboutTsx).toContain('v1.0.3');
+    expect(aboutTsx).toContain('v1.1.0');
   });
 
   it('confirms README.md does not contain the Spotify / Apple Music / system audio capture section', () => {
@@ -126,3 +126,4 @@ describe('System Audio Feature Removal Verification', () => {
     expect(readme).not.toContain('AudD');
   });
 });
+

@@ -13,7 +13,9 @@ import {
 } from './services/tauriBridge';
 import { ConstellationLyricEngine } from './components/ConstellationLyricEngine';
 import { CenteredAudioRing } from './components/CenteredAudioRing';
-import { AmbientEdgeLight } from './components/AmbientEdgeLight';
+import { BackgroundTheme } from './components/BackgroundTheme';
+import { MovingAmbientLight } from './components/MovingAmbientLight';
+import { BeatDebugOverlay } from './components/BeatDebugOverlay';
 import { LockScreenClock } from './components/LockScreenClock';
 import { BottomTrackPill, AmbientColorConfig } from './components/BottomTrackPill';
 import { LrcSearchModal } from './components/LrcSearchModal';
@@ -38,7 +40,12 @@ function getSongSyncKey(title?: string, artist?: string): string | null {
   if (!title || !title.trim()) return null;
   const cleanT = title.toLowerCase().trim().replace(/[^\w]/g, '_');
   const cleanA = (artist || '').toLowerCase().trim().replace(/[^\w]/g, '_');
-  return `constella_sync_${cleanT}_${cleanA}`;
+  const newKey = `astralyr_sync_${cleanT}_${cleanA}`;
+  const legacyKey = `constella_sync_${cleanT}_${cleanA}`;
+  if (typeof localStorage !== 'undefined' && localStorage.getItem(newKey) === null && localStorage.getItem(legacyKey) !== null) {
+    return legacyKey;
+  }
+  return newKey;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -128,6 +135,11 @@ export const App: React.FC = () => {
   // Startup cleanup for legacy system audio localStorage keys
   useEffect(() => {
     try {
+      localStorage.removeItem('astralyr_system_audio_fingerprint_config');
+      localStorage.removeItem('astralyr_system_audio_notice_shown');
+      localStorage.removeItem('astralyr_last_source');
+      localStorage.removeItem('astralyr_audio_source');
+      localStorage.removeItem('astralyr_system_audio');
       localStorage.removeItem('constella_system_audio_fingerprint_config');
       localStorage.removeItem('constella_system_audio_notice_shown');
       localStorage.removeItem('constella_last_source');
@@ -312,7 +324,7 @@ export const App: React.FC = () => {
 
   const handlePlayTrackFromPlaylist = useCallback(async (track: PlaylistTrack, queue: PlaylistTrack[]) => {
     try {
-      localStorage.setItem('constella_last_track_id', track.id);
+      localStorage.setItem('astralyr_last_track_id', track.id);
     } catch {}
 
     const convertedQueue: MusicTrack[] = queue.map(t => ({
@@ -320,9 +332,9 @@ export const App: React.FC = () => {
       title: t.title,
       artist: t.artist,
       album: t.album || 'Local Audio',
-      audioUrl: t.audioUrl && (t.audioUrl.startsWith('constella-media://') || t.audioUrl.startsWith('http'))
+      audioUrl: t.audioUrl && (t.audioUrl.startsWith('astralyr-media://') || t.audioUrl.startsWith('constella-media://') || t.audioUrl.startsWith('http'))
         ? t.audioUrl
-        : (window.electronAPI?.library ? `constella-media://${t.id}` : t.audioUrl),
+        : (window.electronAPI?.library ? `astralyr-media://${t.id}` : t.audioUrl),
       duration: t.duration,
       rawLrc: t.rawLrc,
       artworkUrl: t.artworkUrl,
@@ -355,12 +367,14 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      (window as any).__CONSTELLA__ = {
+      const apiObj = {
         setSyncOffset,
         getSyncOffset: () => syncOffset,
         getCurrentTrack: () => currentTrack,
         getVisualizerMode: () => visualizerMode,
       };
+      (window as any).__ASTRALYYR__ = apiObj;
+      (window as any).__CONSTELLA__ = apiObj;
     }
   }, [syncOffset, currentTrack, visualizerMode]);
 
@@ -376,6 +390,9 @@ export const App: React.FC = () => {
     setAppearanceConfig(DEFAULT_APPEARANCE_CONFIG);
     saveStoredAppearance(DEFAULT_APPEARANCE_CONFIG);
   }, []);
+
+  const appearanceConfigRef = useRef(appearanceConfig);
+  appearanceConfigRef.current = appearanceConfig;
 
   // Ambient Glow Color Config (saved & restored from localStorage)
   const [colorConfig, setColorConfig] = useState<AmbientColorConfig>(() => {
@@ -527,7 +544,7 @@ export const App: React.FC = () => {
     let lastTimeUpdate = 0;
 
     const loop = (timestamp: number) => {
-      const data = mgr.getVisualizerData(settings.beatSensitivity);
+      const data = mgr.getVisualizerData(appearanceConfigRef.current.ambientBeatSensitivity);
       audioDataRef.current = data;
 
       // Smooth 60fps auto-cycle animation of --accent and accentRgbRef (zero flicker)
@@ -653,6 +670,7 @@ export const App: React.FC = () => {
     (window as any).__VISUALIZER_API__ = {
       play: handleTogglePlay,
       seek: handleSeek,
+      audioManager: audioManager.current,
       setColorConfig: handleUpdateColorConfig,
       loadHindiNoLyricsTrack: () => {
         const hindiTrack: MusicTrack = {
@@ -726,7 +744,7 @@ export const App: React.FC = () => {
           album: t.album,
           duration: t.duration,
           artworkUrl: t.artwork,
-          audioUrl: `constella-media://${t.id}`,
+          audioUrl: `astralyr-media://${t.id}`,
           storedFileName: t.storedFileName,
           originalName: t.originalName,
           size: t.size,
@@ -740,7 +758,7 @@ export const App: React.FC = () => {
       showToast(`Added ${importedTracks.length} song(s) to Library`);
 
       const first = importedTracks[0];
-      const audioUrl = `constella-media://${first.id}`;
+      const audioUrl = `astralyr-media://${first.id}`;
       const newTrack: MusicTrack = {
         id: first.id,
         title: first.title,
@@ -929,8 +947,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     const restoreLastSession = async () => {
       try {
-        const lastPlId = localStorage.getItem('constella_last_playlist_id');
-        const lastTrackId = localStorage.getItem('constella_last_track_id');
+        const lastPlId = localStorage.getItem('astralyr_last_playlist_id') || localStorage.getItem('constella_last_playlist_id');
+        const lastTrackId = localStorage.getItem('astralyr_last_track_id') || localStorage.getItem('constella_last_track_id');
         if (lastPlId) {
           const pl = await playlistDb.getPlaylist(lastPlId);
           if (pl && pl.tracks.length > 0) {
@@ -940,9 +958,9 @@ export const App: React.FC = () => {
               artist: t.artist,
               album: t.album || 'Local Audio',
               duration: t.duration,
-              audioUrl: t.audioUrl.startsWith('constella-media://') || t.audioUrl.startsWith('http')
+              audioUrl: t.audioUrl.startsWith('astralyr-media://') || t.audioUrl.startsWith('constella-media://') || t.audioUrl.startsWith('http')
                 ? t.audioUrl
-                : `constella-media://${t.id}`,
+                : `astralyr-media://${t.id}`,
               rawLrc: t.rawLrc,
               artworkUrl: t.artworkUrl,
               primaryColor: '#ffffff',
@@ -1130,14 +1148,33 @@ export const App: React.FC = () => {
         backgroundColor: desktopMode === 'wallpaper' ? 'transparent' : '#000000',
       }}
     >
-      {/* 1. Ambient Edge Lighting (Bleeds softly inward from all 4 bezels & corners, center pure #000) */}
-      <AmbientEdgeLight
-        audioDataRef={audioDataRef}
+      {/* 0. Background Theme (Solid, Gradient, Album Color, Ambient Mesh with 800ms crossfade) */}
+      <BackgroundTheme
+        config={appearanceConfig}
+        currentTrack={currentTrack}
+        accentColor={activeColorHex}
+        getBeatState={() => audioManager.current.getBeatState()}
+      />
+
+      {/* 1. Moving Ambient Light (Neon rim + inner bloom, travelling perimeter comets & beat pulse) */}
+      <MovingAmbientLight
+        getBeatState={() => audioManager.current.getBeatState()}
         playbackState={playbackState}
         colorRgb={ambientColorRgb}
         accentRgbRef={accentRgbRef}
-        intensity={colorConfig.intensity}
+        mode={appearanceConfig.ambientMotionMode}
+        styleMode={appearanceConfig.ambientStyle}
+        intensity={appearanceConfig.ambientIntensity * colorConfig.intensity}
+        motionSpeed={appearanceConfig.ambientMotionSpeed}
+        beatReaction={appearanceConfig.ambientBeatReaction}
         autoCycle={colorConfig.mode === 'autocycle'}
+        visualQuality={appearanceConfig.visualQuality}
+      />
+
+      {/* Beat Engine Debug HUD & FPS Meter (Keys D and F) */}
+      <BeatDebugOverlay
+        getBeatState={() => audioManager.current.getBeatState()}
+        visualQuality={appearanceConfig.visualQuality}
       />
 
       {/* 2A. Synced Lyric Constellation Engine (Active when synced lyrics exist; 600ms crossfade) */}
@@ -1154,6 +1191,7 @@ export const App: React.FC = () => {
           accentRgbRef={accentRgbRef}
           accentColor={activeColorHex}
           appearanceConfig={appearanceConfig}
+          getBeatState={() => audioManager.current.getBeatState()}
         />
       </div>
 
@@ -1273,7 +1311,7 @@ export const App: React.FC = () => {
         onShowToast={showToast}
       />
 
-      {/* About Constella Dialog */}
+      {/* About Astralyr Dialog */}
       <AboutModal
         isOpen={isAboutOpen}
         onClose={() => setIsAboutOpen(false)}

@@ -1,7 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.shridhar396.constella",
-  "productName": "Constella",
+  "appId": "com.shridhar396.astralyr",
+  "productName": "Astralyr",
+  "artifactName": "${productName}-Setup-${version}.${ext}",
   "directories": {
     "output": "release",
     "buildResources": "assets/branding"
@@ -23,14 +24,15 @@
         "arch": ["x64"]
       }
     ],
-    "icon": "assets/branding/icon.ico"
+    "icon": "assets/branding/astralyr-icon.ico"
   },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Constella"
+    "shortcutName": "Astralyr",
+    "artifactName": "${productName}-Setup-${version}.${ext}"
   },
   "mac": {
     "target": [
@@ -49,7 +51,7 @@
         "arch": ["x64"]
       }
     ],
-    "icon": "assets/branding/icon-512.png",
+    "icon": "assets/branding/astralyr-icon.png",
     "category": "AudioVideo"
   }
 }

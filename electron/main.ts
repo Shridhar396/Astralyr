@@ -15,6 +15,16 @@ import { LibraryManager } from './libraryManager';
 // Register privileged custom protocol for streaming local audio and artwork securely
 protocol.registerSchemesAsPrivileged([
   {
+    scheme: 'astralyr-media',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+  {
     scheme: 'constella-media',
     privileges: {
       standard: true,
@@ -92,12 +102,16 @@ function saveWindowState(win: BrowserWindow) {
 function getAppIcon(): string | undefined {
   const brandingDir = path.join(__dirname, '../assets/branding');
   if (process.platform === 'win32') {
+    const astralyrIco = path.join(brandingDir, 'astralyr-icon.ico');
+    if (fs.existsSync(astralyrIco)) return astralyrIco;
     const ico = path.join(brandingDir, 'icon.ico');
     if (fs.existsSync(ico)) return ico;
   } else if (process.platform === 'darwin') {
     const icns = path.join(brandingDir, 'icon.icns');
     if (fs.existsSync(icns)) return icns;
   } else {
+    const astralyrPng = path.join(brandingDir, 'astralyr-icon.png');
+    if (fs.existsSync(astralyrPng)) return astralyrPng;
     const png = path.join(brandingDir, 'icon-512.png');
     if (fs.existsSync(png)) return png;
   }
@@ -116,7 +130,7 @@ function createWindow(): void {
     minWidth: 800,
     minHeight: 500,
     backgroundColor: '#000000',
-    title: 'Constella',
+    title: 'Astralyr',
     icon,
     show: false,
     frame: true,
@@ -219,10 +233,10 @@ if (!gotTheLock) {
     const artDir = libraryMgr.getArtDir();
 
     // Register protocol handler for streaming library media & artwork securely
-    protocol.handle('constella-media', async (request) => {
+    const mediaHandler = async (request: Request) => {
       try {
         const parsedUrl = new URL(request.url);
-        // Format: constella-media://<trackId> or constella-media://art/<trackId>
+        // Format: <scheme>://<trackId> or <scheme>://art/<trackId>
         const isArt = parsedUrl.host === 'art' || parsedUrl.pathname.startsWith('/art/');
         let resourceId = '';
         if (isArt) {
@@ -238,7 +252,7 @@ if (!gotTheLock) {
 
         // Security check: reject any paths containing "..", "/", "\", or non-alphanumeric chars
         if (!resourceId || !/^[a-zA-Z0-9_\-]+$/.test(resourceId)) {
-          console.warn('[Security] Blocked invalid constella-media resourceId:', resourceId);
+          console.warn('[Security] Blocked invalid media resourceId:', resourceId);
           return new Response('Forbidden', { status: 403 });
         }
 
@@ -322,10 +336,13 @@ if (!gotTheLock) {
           },
         });
       } catch (err: any) {
-        console.error('[constella-media] Protocol error:', err);
+        console.error('[astralyr-media] Protocol error:', err);
         return new Response('Internal error', { status: 500 });
       }
-    });
+    };
+
+    protocol.handle('astralyr-media', mediaHandler);
+    protocol.handle('constella-media', mediaHandler);
 
     // Library IPC Handlers
     ipcMain.handle('library:import-files', async (_event, filePaths: string[]) => {
@@ -405,7 +422,7 @@ if (!gotTheLock) {
     ipcMain.handle('library:import-backup', async () => {
       if (!mainWindow) return { success: false, importedCount: 0 };
       const res = await dialog.showOpenDialog(mainWindow, {
-        title: 'Select Constella Library Backup Folder',
+        title: 'Select Astralyr Library Backup Folder',
         properties: ['openDirectory'],
       });
       if (res.canceled || res.filePaths.length === 0) {

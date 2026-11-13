@@ -10,7 +10,7 @@ export interface StoredTrack {
   artist: string;
   album?: string;
   duration: number; // in seconds
-  artwork?: string; // e.g. "constella-media://art/<id>"
+  artwork?: string; // e.g. "astralyr-media://art/<id>"
   storedFileName: string; // e.g. "<id>.mp3"
   originalName: string; // original filename e.g. "Song.mp3"
   size: number; // in bytes
@@ -355,7 +355,7 @@ export class LibraryManager {
           artist: meta.artist || fallbackArtist,
           album: meta.album || 'Local Audio',
           duration: meta.duration || 180,
-          artwork: meta.hasArtwork ? `constella-media://art/${trackId}` : undefined,
+          artwork: meta.hasArtwork ? `astralyr-media://art/${trackId}` : undefined,
           storedFileName,
           originalName: filename,
           size: stat.size,
@@ -446,7 +446,7 @@ export class LibraryManager {
       artist: existing?.artist || meta.artist || 'Unknown Artist',
       album: existing?.album || meta.album || 'Local Audio',
       duration: meta.duration || existing?.duration || 180,
-      artwork: meta.hasArtwork ? `constella-media://art/${trackId}` : existing?.artwork,
+      artwork: meta.hasArtwork ? `astralyr-media://art/${trackId}` : existing?.artwork,
       storedFileName,
       originalName: path.basename(newFilePath),
       size: stat.size,
@@ -591,7 +591,7 @@ export class LibraryManager {
    * Export library backup (database JSON + audio files + artwork)
    */
   public async exportBackup(destFolder: string): Promise<{ success: boolean; backupPath: string }> {
-    const backupDirName = `Constella_Library_Backup_${Date.now()}`;
+    const backupDirName = `Astralyr_Library_Backup_${Date.now()}`;
     const targetDir = path.join(destFolder, backupDirName);
 
     await fs.promises.mkdir(targetDir, { recursive: true });

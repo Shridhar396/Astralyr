@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { X, ExternalLink, Sparkles, Music2, Disc3 } from 'lucide-react';
-import appIcon from '../../assets/branding/icon-512.png';
+import appIcon from '../../assets/branding/astralyr-icon.png';
 
 interface AboutModalProps {
   isOpen: boolean;
@@ -58,7 +58,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
           />
           <img
             src={appIcon}
-            alt="Constella Icon"
+            alt="Astralyr Icon"
             className="relative w-20 h-20 rounded-2xl shadow-xl object-cover border border-white/15"
           />
         </div>
@@ -68,7 +68,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
           className="text-4xl tracking-tight text-white font-[200] lowercase select-none"
           style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
         >
-          constella
+          astralyr
         </h1>
 
         {/* Tagline */}
@@ -78,7 +78,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
 
         {/* Version Badge */}
         <div className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono text-white/60 mb-5">
-          v1.0.3 · synced lyrics + ambient light
+          v1.1.0 · synced lyrics + ambient light
         </div>
 
         {/* Features / Highlights */}

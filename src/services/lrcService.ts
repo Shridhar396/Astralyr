@@ -388,14 +388,33 @@ export class LrcService {
 /**
  * Built-in Demo Tracks with reliable local /demo.wav audio asset
  */
+const BASE = typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL ? import.meta.env.BASE_URL : '/';
+
 export const DEMO_TRACKS: MusicTrack[] = [
+  {
+    id: 'edm-beat-demo',
+    title: 'Cyber Neon Beats (128 BPM Club Mix)',
+    artist: 'Antigravity Soundscapes',
+    album: 'Electric Constellations',
+    duration: 22,
+    audioUrl: `${BASE}edm-beat.wav`.replace('//', '/'),
+    primaryColor: '#ff2d75',
+    secondaryColor: '#00f5d4',
+    accentGlow: 'rgba(255, 45, 117, 0.85)',
+    rawLrc: `[00:00.94] Feel the rhythm pulsing through the floor
+[00:04.69] Neon lights are burning brighter than before
+[00:08.44] Bassline drops and echoes fill the night
+[00:12.19] Synchronized energy bursting into light
+[00:15.94] Electric heartbeat moving to the sound
+[00:19.69] Lost inside the groove that we have found`,
+  },
   {
     id: 'ambient-demo',
     title: 'Constellation Ambient (Lo-Fi Chill)',
     artist: 'Antigravity Soundscapes',
     album: 'Starlight Horizons',
     duration: 40,
-    audioUrl: '/demo.wav',
+    audioUrl: `${BASE}demo.wav`.replace('//', '/'),
     primaryColor: '#ffffff',
     secondaryColor: '#94a3b8',
     accentGlow: 'rgba(255, 255, 255, 0.75)',

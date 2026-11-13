@@ -1,11 +1,11 @@
 [package]
-name = "constella"
-version = "1.0.0"
-description = "Constella — your music, as a constellation"
+name = "astralyr"
+version = "1.1.0"
+description = "Astralyr — your music, as a constellation"
 edition = "2021"
 
 [lib]
-name = "constella_lib"
+name = "astralyr_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

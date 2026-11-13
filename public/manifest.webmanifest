@@ -1,7 +1,7 @@
 {
-  "name": "Constella",
-  "short_name": "Constella",
-  "description": "your music, as a constellation",
+  "name": "Astralyr",
+  "short_name": "Astralyr",
+  "description": "Astralyr — your music, as a constellation",
   "start_url": "/",
   "display": "standalone",
   "orientation": "landscape",
@@ -48,10 +48,9 @@
       "purpose": "maskable"
     },
     {
-      "src": "/constella-icon.svg",
+      "src": "/astralyr-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
     }
   ]
 }
-

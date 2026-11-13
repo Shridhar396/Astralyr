@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Constella",
-  "version": "1.0.0",
-  "identifier": "com.yourname.constella",
+  "productName": "Astralyr",
+  "version": "1.1.0",
+  "identifier": "com.shridhar396.astralyr",
   "build": {
     "beforeDevCommand": "pnpm run dev",
     "devUrl": "http://127.0.0.1:5173",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Constella",
+        "title": "Astralyr",
         "width": 1280,
         "height": 720,
         "center": true,
@@ -26,7 +26,7 @@
     ],
     "trayIcon": {
       "iconPath": "icons/32x32.png",
-      "tooltip": "Constella — your music, as a constellation"
+      "tooltip": "Astralyr — your music, as a constellation"
     },
     "security": {
       "csp": null

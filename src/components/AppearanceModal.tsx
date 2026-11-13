@@ -9,6 +9,13 @@ import {
   DatePosition,
   TimeFormat,
   WordCase,
+  GRADIENT_PRESETS,
+  SOLID_SWATCHES,
+  BackgroundMode,
+  GradientType,
+  RippleStyle,
+  RippleColor,
+  VisualQuality,
 } from '../services/appearanceConfig';
 import {
   Sliders,
@@ -26,6 +33,8 @@ import {
   Trash2,
   Download,
   Upload,
+  Palette,
+  Zap,
 } from 'lucide-react';
 import { playlistDb } from '../services/playlistDb';
 
@@ -35,7 +44,7 @@ interface AppearanceModalProps {
   config: AppearanceConfig;
   onUpdateConfig: (updated: Partial<AppearanceConfig>) => void;
   onResetDefault: () => void;
-  initialTab?: 'presets' | 'time' | 'date' | 'lyrics' | 'library';
+  initialTab?: 'presets' | 'time' | 'date' | 'lyrics' | 'ambient' | 'background' | 'effects' | 'library';
   onShowToast?: (message: string) => void;
 }
 
@@ -48,7 +57,7 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
   initialTab,
   onShowToast,
 }) => {
-  const [activeTab, setActiveTab] = useState<'presets' | 'time' | 'date' | 'lyrics' | 'library'>('presets');
+  const [activeTab, setActiveTab] = useState<'presets' | 'time' | 'date' | 'lyrics' | 'ambient' | 'background' | 'effects' | 'library'>('presets');
   const [libraryStats, setLibraryStats] = useState<{
     libraryDir: string;
     trackCount: number;
@@ -161,6 +170,42 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>Lyrics Constellation</span>
+          </button>
+          <button
+            data-tab="ambient"
+            onClick={() => setActiveTab('ambient')}
+            className={`px-3 py-2.5 font-medium flex items-center space-x-1.5 border-b-2 transition-all text-xs ${
+              activeTab === 'ambient'
+                ? 'border-white text-white'
+                : 'border-transparent text-white/50 hover:text-white/80'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Ambient Light</span>
+          </button>
+          <button
+            data-tab="background"
+            onClick={() => setActiveTab('background')}
+            className={`px-3 py-2.5 font-medium flex items-center space-x-1.5 border-b-2 transition-all text-xs ${
+              activeTab === 'background'
+                ? 'border-white text-white'
+                : 'border-transparent text-white/50 hover:text-white/80'
+            }`}
+          >
+            <Palette className="w-3.5 h-3.5" />
+            <span>Background</span>
+          </button>
+          <button
+            data-tab="effects"
+            onClick={() => setActiveTab('effects')}
+            className={`px-3 py-2.5 font-medium flex items-center space-x-1.5 border-b-2 transition-all text-xs ${
+              activeTab === 'effects'
+                ? 'border-white text-white'
+                : 'border-transparent text-white/50 hover:text-white/80'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            <span>Effects</span>
           </button>
           <button
             data-tab="library"
@@ -641,6 +686,579 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
                     className="w-4 h-4 rounded accent-white cursor-pointer"
                   />
                 </div>
+
+                {/* Tint lyrics with accent color */}
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between col-span-2">
+                  <div>
+                    <div className="font-medium text-white">Tint lyrics with accent color</div>
+                    <div className="text-[10px] text-white/50">Active ring/glow, stars & lines take accent; past words at 50% opacity</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={config.tintLyricsWithAccent !== false}
+                    onChange={(e) => onUpdateConfig({ tintLyricsWithAccent: e.target.checked })}
+                    className="w-4 h-4 rounded accent-white cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: AMBIENT LIGHT */}
+          {activeTab === 'ambient' && (
+            <div className="space-y-4">
+              {/* Motion Mode */}
+              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-white">Motion Mode</div>
+                    <div className="text-[11px] text-white/50">Beat synchronization and perimeter comet travel</div>
+                  </div>
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-white/10 text-white">
+                    {config.ambientMotionMode}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {(['off', 'calm', 'beat', 'party'] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => onUpdateConfig({ ambientMotionMode: m })}
+                      className={`py-2 px-2 rounded-lg border text-center font-medium capitalize text-xs transition-all ${
+                        config.ambientMotionMode === m
+                          ? 'bg-white/20 border-white text-white shadow-sm'
+                          : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Style: Rim + Bloom / Soft bloom only / Rim only */}
+              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
+                <div className="font-medium text-white">Light Style</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'rim-bloom', label: 'Rim + Bloom', desc: 'Neon rim + inner bloom' },
+                    { id: 'bloom-only', label: 'Soft Bloom Only', desc: 'No thin border line' },
+                    { id: 'rim-only', label: 'Rim Only', desc: 'Crisp 2px neon rim' },
+                  ].map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => onUpdateConfig({ ambientStyle: s.id as any })}
+                      className={`p-2.5 rounded-lg border text-left transition-all ${
+                        config.ambientStyle === s.id
+                          ? 'bg-white/20 border-white text-white'
+                          : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold">{s.label}</div>
+                      <div className="text-[10px] text-white/40 mt-0.5">{s.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sliders Grid */}
+              <div className="space-y-3 p-3.5 rounded-xl bg-white/[0.03] border border-white/10">
+                {/* Intensity */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-medium text-white">Intensity</span>
+                    <span className="font-mono text-white/70">{Math.round(config.ambientIntensity * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="2.0"
+                    step="0.05"
+                    value={config.ambientIntensity}
+                    onChange={(e) => onUpdateConfig({ ambientIntensity: parseFloat(e.target.value) })}
+                    className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
+                  />
+                </div>
+
+                {/* Motion Speed */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-medium text-white">Motion Speed</span>
+                    <span className="font-mono text-white/70">{config.ambientMotionSpeed.toFixed(2)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="2.0"
+                    step="0.05"
+                    value={config.ambientMotionSpeed}
+                    onChange={(e) => onUpdateConfig({ ambientMotionSpeed: parseFloat(e.target.value) })}
+                    className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
+                  />
+                </div>
+
+                {/* Beat Reaction */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-medium text-white">Beat Reaction</span>
+                    <span className="font-mono text-white/70">{config.ambientBeatReaction.toFixed(2)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.0"
+                    max="2.0"
+                    step="0.05"
+                    value={config.ambientBeatReaction}
+                    onChange={(e) => onUpdateConfig({ ambientBeatReaction: parseFloat(e.target.value) })}
+                    className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
+                  />
+                </div>
+
+                {/* Beat Sensitivity */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-medium text-white">Beat Sensitivity</span>
+                    <span className="font-mono text-white/70">{Math.round(config.ambientBeatSensitivity)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={config.ambientBeatSensitivity}
+                    onChange={(e) => onUpdateConfig({ ambientBeatSensitivity: parseInt(e.target.value, 10) })}
+                    className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Keyboard shortcuts tip */}
+              <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between text-[11px] text-white/60">
+                <span>Toggle Beat Engine HUD (BPM, phase & bands):</span>
+                <kbd className="px-2 py-0.5 rounded bg-white/10 text-white font-mono font-bold text-[10px]">D</kbd>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: BACKGROUND THEMES */}
+          {activeTab === 'background' && (
+            <div className="space-y-4">
+              {/* Background Mode Selector */}
+              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-white">Background Mode</div>
+                    <div className="text-[11px] text-white/50">Theme style behind lyrics and ambient light</div>
+                  </div>
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-white/10 text-white">
+                    {config.bgMode}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {(
+                    [
+                      { id: 'solid', label: 'Solid' },
+                      { id: 'gradient', label: 'Gradient' },
+                      { id: 'album', label: 'Album Color' },
+                      { id: 'mesh', label: 'Ambient Mesh' },
+                    ] as const
+                  ).map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => onUpdateConfig({ bgMode: m.id })}
+                      className={`py-2 px-1 rounded-lg border text-center font-medium text-xs transition-all ${
+                        config.bgMode === m.id
+                          ? 'bg-white/20 border-white text-white shadow-sm'
+                          : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* MODE: SOLID */}
+              {config.bgMode === 'solid' && (
+                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-3">
+                  <div className="font-medium text-white">Solid Color Swatches</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {SOLID_SWATCHES.map((s) => (
+                      <button
+                        key={s.hex}
+                        onClick={() => onUpdateConfig({ bgSolidColor: s.hex })}
+                        className={`p-2.5 rounded-lg border flex items-center space-x-2 text-left transition-all ${
+                          config.bgSolidColor.toLowerCase() === s.hex.toLowerCase()
+                            ? 'bg-white/20 border-white text-white'
+                            : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <span
+                          className="w-4 h-4 rounded-full border border-white/30 flex-shrink-0"
+                          style={{ backgroundColor: s.hex }}
+                        />
+                        <span className="text-[11px] font-medium truncate">{s.name}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Custom Color Picker */}
+                  <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+                    <span className="text-white/70">Custom Solid Color</span>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="color"
+                        value={config.bgSolidColor}
+                        onChange={(e) => onUpdateConfig({ bgSolidColor: e.target.value })}
+                        className="w-8 h-8 rounded border border-white/20 bg-transparent cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={config.bgSolidColor}
+                        onChange={(e) => onUpdateConfig({ bgSolidColor: e.target.value })}
+                        className="w-24 px-2 py-1 rounded bg-black/50 border border-white/20 text-white font-mono text-[11px] outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* MODE: GRADIENT */}
+              {config.bgMode === 'gradient' && (
+                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-3">
+                  {/* Presets */}
+                  <div>
+                    <div className="font-medium text-white mb-2">Gradient Presets</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {GRADIENT_PRESETS.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() =>
+                            onUpdateConfig({
+                              bgGradientPreset: p.id,
+                              bgGradientType: p.type,
+                              bgGradientColors: p.colors,
+                              bgGradientAngle: p.angle,
+                            })
+                          }
+                          className={`p-2.5 rounded-lg border text-left transition-all relative overflow-hidden ${
+                            config.bgGradientPreset === p.id
+                              ? 'border-white text-white shadow-md'
+                              : 'border-white/10 text-white/70 hover:border-white/30'
+                          }`}
+                          style={{
+                            background: `linear-gradient(${p.angle}deg, ${p.colors.join(', ')})`,
+                          }}
+                        >
+                          <div className="relative z-10 font-bold text-xs drop-shadow">{p.name}</div>
+                          <div className="relative z-10 text-[10px] text-white/60">{p.type}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Type: Linear vs Radial */}
+                  <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+                    <span className="text-white/70">Gradient Type</span>
+                    <div className="flex space-x-1 bg-black/40 p-0.5 rounded-lg border border-white/10">
+                      {(['linear', 'radial'] as const).map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => onUpdateConfig({ bgGradientType: t, bgGradientPreset: 'custom' })}
+                          className={`px-3 py-1 rounded capitalize font-medium text-xs transition-all ${
+                            config.bgGradientType === t
+                              ? 'bg-white/20 text-white shadow-sm'
+                              : 'text-white/50 hover:text-white'
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Angle slider (if linear) */}
+                  {config.bgGradientType === 'linear' && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-white/70">Gradient Angle</span>
+                        <span className="font-mono text-white/60">{config.bgGradientAngle}°</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="360"
+                        step="5"
+                        value={config.bgGradientAngle}
+                        onChange={(e) =>
+                          onUpdateConfig({
+                            bgGradientAngle: parseInt(e.target.value, 10),
+                            bgGradientPreset: 'custom',
+                          })
+                        }
+                        className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
+                      />
+                    </div>
+                  )}
+
+                  {/* Colors */}
+                  <div className="pt-2 border-t border-white/10 space-y-2">
+                    <div className="text-[11px] text-white/70">Gradient Colors (2–3 colors)</div>
+                    <div className="flex space-x-3">
+                      {config.bgGradientColors.map((color, idx) => (
+                        <div key={idx} className="flex items-center space-x-1.5 bg-black/40 p-1.5 rounded-lg border border-white/10">
+                          <input
+                            type="color"
+                            value={color}
+                            onChange={(e) => {
+                              const newCols = [...config.bgGradientColors];
+                              newCols[idx] = e.target.value;
+                              onUpdateConfig({ bgGradientColors: newCols, bgGradientPreset: 'custom' });
+                            }}
+                            className="w-6 h-6 rounded border border-white/20 bg-transparent cursor-pointer"
+                          />
+                          <span className="font-mono text-[10px] text-white/70">{color}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* MODE: ALBUM COLOR */}
+              {config.bgMode === 'album' && (
+                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
+                  <div className="font-semibold text-white">Album Artwork Tinting</div>
+                  <p className="text-[11px] text-white/60 leading-relaxed">
+                    Astralyr extracts the dominant and secondary colors from the current song's artwork (downscaled to 64×64 and cached).
+                    Colors are automatically clamped to ≤ 22% lightness to preserve high-contrast readability for lyrics and the clock.
+                  </p>
+                  <div className="text-[10px] text-white/40 italic">
+                    If a song has no artwork, your chosen accent color is used as a fallback.
+                  </div>
+                </div>
+              )}
+
+              {/* MODE: AMBIENT MESH */}
+              {config.bgMode === 'mesh' && (
+                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
+                  <div className="font-semibold text-white">Ambient Mesh Blobs</div>
+                  <p className="text-[11px] text-white/60 leading-relaxed">
+                    3–4 soft, large organic blurred blobs drift slowly behind the UI, gently swelling on each bass beat without rapid flashing.
+                  </p>
+                  <div className="text-[10px] text-white/40">
+                    Runs at capped resolution and 800ms crossfade transitions.
+                  </div>
+                </div>
+              )}
+
+              {/* INTENSITY SLIDER */}
+              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-white">Background Intensity</span>
+                  <span className="font-mono text-white/70">{Math.round(config.bgIntensity * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1.0"
+                  step="0.05"
+                  value={config.bgIntensity}
+                  onChange={(e) => onUpdateConfig({ bgIntensity: parseFloat(e.target.value) })}
+                  className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
+                />
+                <div className="text-[10px] text-white/40 pt-1">
+                  Base lightness is capped at 22% for perfect readability. Crossfades smoothly over 800ms.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: VISUAL EFFECTS & PERFORMANCE */}
+          {activeTab === 'effects' && (
+            <div className="space-y-4">
+              {/* SECTION 1: WORD RIPPLE */}
+              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-white">Word Ripple Effect</div>
+                    <div className="text-[11px] text-white/50">
+                      Concentric rings & soft pulse expanding from active word star
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={config.rippleEnabled !== false}
+                    onChange={(e) => onUpdateConfig({ rippleEnabled: e.target.checked })}
+                    className="w-4 h-4 rounded accent-white cursor-pointer"
+                  />
+                </div>
+
+                {config.rippleEnabled !== false && (
+                  <div className="space-y-3 pt-2 border-t border-white/5">
+                    {/* Ripple Style */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/80">Ripple Style</span>
+                      <div className="flex rounded-lg bg-black/40 p-0.5 border border-white/10">
+                        {[
+                          { id: 'rings', label: 'Rings' },
+                          { id: 'pulse-only', label: 'Pulse only' },
+                          { id: 'rings-pulse', label: 'Rings + Pulse' },
+                        ].map((st) => (
+                          <button
+                            key={st.id}
+                            onClick={() => onUpdateConfig({ rippleStyle: st.id as RippleStyle })}
+                            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                              config.rippleStyle === st.id
+                                ? 'bg-white text-black shadow'
+                                : 'text-white/60 hover:text-white'
+                            }`}
+                          >
+                            {st.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Ripple Color */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/80">Ripple Color</span>
+                      <div className="flex rounded-lg bg-black/40 p-0.5 border border-white/10">
+                        {[
+                          { id: 'accent', label: 'Accent Color' },
+                          { id: 'white', label: 'Pure White' },
+                        ].map((c) => (
+                          <button
+                            key={c.id}
+                            onClick={() => onUpdateConfig({ rippleColor: c.id as RippleColor })}
+                            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                              config.rippleColor === c.id
+                                ? 'bg-white text-black shadow'
+                                : 'text-white/60 hover:text-white'
+                            }`}
+                          >
+                            {c.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Ripple Size */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-white/70">Ripple Size</span>
+                        <span className="font-mono text-white/90">{config.rippleSize.toFixed(1)}x</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="2.0"
+                        step="0.1"
+                        value={config.rippleSize}
+                        onChange={(e) => onUpdateConfig({ rippleSize: parseFloat(e.target.value) })}
+                        className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                      />
+                    </div>
+
+                    {/* Ripple Speed */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-white/70">Ripple Speed</span>
+                        <span className="font-mono text-white/90">{config.rippleSpeed.toFixed(1)}x</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="2.0"
+                        step="0.1"
+                        value={config.rippleSpeed}
+                        onChange={(e) => onUpdateConfig({ rippleSpeed: parseFloat(e.target.value) })}
+                        className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                      />
+                    </div>
+
+                    {/* Subtle Shimmer */}
+                    <div className="flex items-center justify-between pt-1">
+                      <div>
+                        <div className="text-white/90 font-medium text-xs">Subtle Shimmer</div>
+                        <div className="text-[10px] text-white/40">Faint sparkle dust along expanding ring</div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(config.rippleShimmer)}
+                        onChange={(e) => onUpdateConfig({ rippleShimmer: e.target.checked })}
+                        className="w-4 h-4 rounded accent-white cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION 2: LYRIC TINTING */}
+              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-white">Tint lyrics with accent color</div>
+                  <div className="text-[11px] text-white/50">
+                    Active ring/glow, stars & lines take accent; past words at 50% opacity
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={config.tintLyricsWithAccent !== false}
+                  onChange={(e) => onUpdateConfig({ tintLyricsWithAccent: e.target.checked })}
+                  className="w-4 h-4 rounded accent-white cursor-pointer"
+                />
+              </div>
+
+              {/* SECTION 3: ADAPTIVE QUALITY & PERFORMANCE */}
+              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-white">Visual Quality Tier</div>
+                    <div className="text-[11px] text-white/50">
+                      Adaptive frame pacing & rendering optimizations
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-5 gap-1.5 pt-1">
+                  {[
+                    { id: 'auto', label: 'Auto' },
+                    { id: 'high', label: 'High' },
+                    { id: 'medium', label: 'Med' },
+                    { id: 'low', label: 'Low' },
+                    { id: 'minimal', label: 'Minimal' },
+                  ].map((q) => (
+                    <button
+                      key={q.id}
+                      onClick={() => onUpdateConfig({ visualQuality: q.id as VisualQuality })}
+                      className={`py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                        (config.visualQuality || 'auto') === q.id
+                          ? 'bg-white text-black border-white shadow'
+                          : 'bg-black/30 border-white/10 text-white/60 hover:text-white'
+                      }`}
+                    >
+                      {q.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="text-[10px] text-white/40 leading-relaxed pt-1 border-t border-white/5">
+                  {(config.visualQuality || 'auto') === 'auto' &&
+                    'Auto: Monitors 120-frame rolling average. Drops tier if frame times exceed 20ms for 3s; upgrades after 15s below 10ms.'}
+                  {config.visualQuality === 'high' &&
+                    'High: Full 60fps, 3 comets, 4 drifting blobs, 3 ripple rings, dynamic mesh.'}
+                  {config.visualQuality === 'medium' &&
+                    'Medium: 0.5x resolution, 2 comets, 2 blobs, 2 ripple rings, 30fps mesh.'}
+                  {config.visualQuality === 'low' &&
+                    'Low: Static background, 1 comet, 1 ripple ring.'}
+                  {config.visualQuality === 'minimal' &&
+                    'Minimal: Static rim only, ripples & comets disabled for max battery life.'}
+                </div>
+
+                <div className="text-[10px] text-emerald-400/80 pt-1 flex items-center justify-between">
+                  <span>Press key <kbd className="px-1 py-0.5 rounded bg-white/10 text-white font-mono">F</kbd> for live FPS meter</span>
+                  <span>Press key <kbd className="px-1 py-0.5 rounded bg-white/10 text-white font-mono">D</kbd> for Beat Debug HUD</span>
+                </div>
               </div>
             </div>
           )}
@@ -657,7 +1275,7 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2 text-white/70">
                   <div className="font-semibold text-white">Desktop Library Storage</div>
                   <p className="text-[11px] text-white/50 leading-relaxed">
-                    You are running Constella in a web browser. Permanent local filesystem storage and high-performance audio streaming are built into the Constella Desktop app for Windows, macOS, and Linux. In the browser, your uploaded songs and playlists are stored in IndexedDB.
+                    You are running Astralyr in a web browser. Permanent local filesystem storage and high-performance audio streaming are built into the Astralyr Desktop app for Windows, macOS, and Linux. In the browser, your uploaded songs and playlists are stored in IndexedDB.
                   </p>
                 </div>
               ) : (

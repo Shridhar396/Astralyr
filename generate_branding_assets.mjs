@@ -225,7 +225,7 @@ async function run() {
 
   console.log('5. Generating 1280x640 Open Graph & Social Preview image...');
   const ogRes = await send('Runtime.evaluate', {
-    expression: `window.renderSocialOg('/constella-banner.png')`,
+    expression: `window.renderSocialOg('/astralyr-banner.png')`,
     awaitPromise: true,
     returnByValue: true,
   });
