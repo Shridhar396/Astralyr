@@ -37,3 +37,11 @@ reference/
 screenshot-*.png
 *.tmp
 scratch/
+
+# Licensing Secrets & Keygen Tool (Offline Keys)
+tools/
+sales_log.csv
+*.pem
+*.key
+license_private.pem
+

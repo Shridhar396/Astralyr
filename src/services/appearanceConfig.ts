@@ -16,29 +16,125 @@ export type WordCase = 'original' | 'lowercase' | 'uppercase';
 export type AmbientMotionMode = 'off' | 'calm' | 'beat' | 'party';
 export type AmbientStyle = 'rim-bloom' | 'bloom-only' | 'rim-only';
 
-export type BackgroundMode = 'solid' | 'gradient' | 'album' | 'mesh';
-export type GradientType = 'linear' | 'radial';
+export type AmbientLightStyle = 'sliding' | 'rim-bloom' | 'static-rim' | 'beat-pulse';
+export type BackgroundMode = 'solid' | 'gradient' | 'custom' | 'wallpaper' | 'album' | 'mesh';
+export type GradientType = 'linear' | 'radial' | 'conic';
 
 export type VisualQuality = 'auto' | 'high' | 'medium' | 'low' | 'minimal';
-export type RippleStyle = 'rings' | 'pulse-only' | 'rings-pulse';
-export type RippleColor = 'accent' | 'white';
 
 export interface GradientPreset {
   id: string;
   name: string;
+  category: 'Dark' | 'Neon' | 'Sunset' | 'Ocean' | 'Aurora' | 'Pastel' | 'Mono';
   type: GradientType;
   colors: string[];
   angle: number;
 }
 
 export const GRADIENT_PRESETS: GradientPreset[] = [
-  { id: 'midnight', name: 'Midnight', type: 'linear', colors: ['#090a0f', '#181b26', '#0d1117'], angle: 135 },
-  { id: 'sunset', name: 'Sunset', type: 'linear', colors: ['#230b1e', '#3b1024', '#150616'], angle: 180 },
-  { id: 'ocean', name: 'Ocean', type: 'linear', colors: ['#04151f', '#092532', '#050c14'], angle: 120 },
-  { id: 'aurora', name: 'Aurora', type: 'linear', colors: ['#051c14', '#072b22', '#06151f'], angle: 145 },
-  { id: 'rose', name: 'Rose', type: 'linear', colors: ['#200914', '#380e22', '#12040b'], angle: 160 },
-  { id: 'ember', name: 'Ember', type: 'linear', colors: ['#220d06', '#3b1708', '#140602'], angle: 195 },
+  // Dark
+  { id: 'midnight', name: 'Midnight', category: 'Dark', type: 'linear', colors: ['#090a0f', '#181b26', '#0d1117'], angle: 135 },
+  { id: 'deep-space', name: 'Deep Space', category: 'Dark', type: 'linear', colors: ['#03050a', '#0a1128', '#000411'], angle: 150 },
+  { id: 'forest', name: 'Forest', category: 'Dark', type: 'linear', colors: ['#091c10', '#0f2e1a', '#06130b'], angle: 135 },
+  { id: 'dusk', name: 'Dusk', category: 'Dark', type: 'linear', colors: ['#1d0d26', '#2d143b', '#120718'], angle: 160 },
+  { id: 'twilight-mist', name: 'Twilight Mist', category: 'Dark', type: 'linear', colors: ['#141824', '#1f2436', '#0e1019'], angle: 120 },
+
+  // Neon
+  { id: 'cyber-neon', name: 'Cyber Neon', category: 'Neon', type: 'linear', colors: ['#1f082e', '#2d0a3d', '#082032'], angle: 135 },
+  { id: 'synthwave', name: 'Synthwave', category: 'Neon', type: 'linear', colors: ['#2b0826', '#3d0c36', '#0d1b3a'], angle: 145 },
+  { id: 'neon-glow', name: 'Neon Glow', category: 'Neon', type: 'linear', colors: ['#0a2024', '#0d3238', '#290a2a'], angle: 180 },
+  { id: 'cosmic-velvet', name: 'Cosmic Velvet', category: 'Neon', type: 'linear', colors: ['#1a0b2e', '#281145', '#0f061c'], angle: 125 },
+
+  // Sunset
+  { id: 'sunset', name: 'Sunset', category: 'Sunset', type: 'linear', colors: ['#230b1e', '#3b1024', '#150616'], angle: 180 },
+  { id: 'ember', name: 'Ember', category: 'Sunset', type: 'linear', colors: ['#220d06', '#3b1708', '#140602'], angle: 195 },
+  { id: 'rose', name: 'Rose Gold', category: 'Sunset', type: 'linear', colors: ['#2d0f1e', '#42152b', '#1a0711'], angle: 160 },
+  { id: 'rose-gold', name: 'Rose Gold', category: 'Sunset', type: 'linear', colors: ['#2d0f1e', '#42152b', '#1a0711'], angle: 160 },
+  { id: 'coral', name: 'Coral', category: 'Sunset', type: 'linear', colors: ['#2d1114', '#40191d', '#19080a'], angle: 140 },
+
+  // Ocean
+  { id: 'ocean', name: 'Ocean', category: 'Ocean', type: 'linear', colors: ['#04151f', '#092532', '#050c14'], angle: 120 },
+  { id: 'abyss', name: 'Abyss', category: 'Ocean', type: 'linear', colors: ['#020b14', '#071a2c', '#01070e'], angle: 170 },
+  { id: 'emerald-isle', name: 'Emerald Isle', category: 'Ocean', type: 'linear', colors: ['#051d14', '#0b2e21', '#04140e'], angle: 135 },
+  { id: 'ice', name: 'Ice', category: 'Ocean', type: 'linear', colors: ['#0c1924', '#122536', '#091119'], angle: 130 },
+
+  // Aurora
+  { id: 'aurora', name: 'Aurora', category: 'Aurora', type: 'linear', colors: ['#051c14', '#072b22', '#06151f'], angle: 145 },
+  { id: 'northern-lights', name: 'Northern Lights', category: 'Aurora', type: 'linear', colors: ['#03181b', '#062828', '#08321d'], angle: 160 },
+
+  // Pastel
+  { id: 'lavender', name: 'Lavender', category: 'Pastel', type: 'linear', colors: ['#191428', '#271e3d', '#110d1c'], angle: 135 },
+  { id: 'peach', name: 'Peach', category: 'Pastel', type: 'linear', colors: ['#281514', '#3b201d', '#1a0d0c'], angle: 155 },
+  { id: 'mint', name: 'Mint', category: 'Pastel', type: 'linear', colors: ['#0e241c', '#16362b', '#091a13'], angle: 140 },
+
+  // Mono
+  { id: 'graphite', name: 'Graphite', category: 'Mono', type: 'linear', colors: ['#121316', '#1a1c21', '#0d0e10'], angle: 135 },
+  { id: 'carbon', name: 'Carbon', category: 'Mono', type: 'linear', colors: ['#08090a', '#111215', '#050506'], angle: 180 },
+  { id: 'obsidian-noir', name: 'Obsidian Noir', category: 'Mono', type: 'linear', colors: ['#050507', '#0c0d12', '#000000'], angle: 145 },
 ];
+
+export interface CustomGradientStop {
+  id: string;
+  color: string;
+  position: number; // 0.0 to 1.0
+}
+
+export interface CustomGradientConfig {
+  type: 'linear' | 'radial' | 'conic';
+  angle: number; // 0 to 360
+  centerX: number; // 0 to 100%
+  centerY: number; // 0 to 100%
+  stops: CustomGradientStop[];
+  smooth: boolean;
+  grain: number; // 0 to 10%
+  animated: boolean; // slow drift
+}
+
+export interface WallpaperConfig {
+  id?: string;
+  url?: string;
+  fit: 'cover' | 'contain' | 'stretch' | 'center' | 'tile';
+  zoom: number; // 100 to 300%
+  offsetX: number; // -100 to 100%
+  offsetY: number; // -100 to 100%
+  blur: number; // 0 to 60px
+  dim: number; // 0 to 90% (default 40%)
+  saturation: number; // 0 to 200% (default 100%)
+  contrast: number; // 50 to 150% (default 100%)
+  tintColor: string; // hex
+  tintOpacity: number; // 0 to 100%
+  useAlbumArt: boolean;
+}
+
+export const DEFAULT_CUSTOM_GRADIENT: CustomGradientConfig = {
+  type: 'linear',
+  angle: 135,
+  centerX: 50,
+  centerY: 50,
+  stops: [
+    { id: 'stop-1', color: '#090a0f', position: 0.0 },
+    { id: 'stop-2', color: '#1f132b', position: 0.35 },
+    { id: 'stop-3', color: '#2a1220', position: 0.7 },
+    { id: 'stop-4', color: '#0d1117', position: 1.0 },
+  ],
+  smooth: true,
+  grain: 2,
+  animated: false,
+};
+
+export const DEFAULT_WALLPAPER_CONFIG: WallpaperConfig = {
+  fit: 'cover',
+  zoom: 100,
+  offsetX: 0,
+  offsetY: 0,
+  blur: 24,
+  dim: 40,
+  saturation: 100,
+  contrast: 100,
+  tintColor: '#000000',
+  tintOpacity: 0,
+  useAlbumArt: false,
+};
 
 export const SOLID_SWATCHES = [
   { name: 'Pure black (OLED)', hex: '#000000' },
@@ -156,33 +252,38 @@ export interface AppearanceConfig {
   showStars: boolean;
   showConnectingLines: boolean;
 
-  // Ambient Moving Light (Phase 2)
+  // Ambient Moving Light & Sliding Perimeter Light
   ambientMotionMode: AmbientMotionMode;
   ambientStyle: AmbientStyle;
+  ambientLightStyle: AmbientLightStyle; // 'sliding' | 'rim-bloom' | 'static-rim' | 'beat-pulse'
   ambientIntensity: number; // 0.2 to 2.0 (default 1.0)
-  ambientMotionSpeed: number; // 0.2 to 2.0 (default 1.0)
+  ambientMotionSpeed: number; // 0.2 to 2.5 (default 1.0)
   ambientBeatReaction: number; // 0.0 to 2.0 (default 1.0)
   ambientBeatSensitivity: number; // 0 to 100 (default 65)
+  ambientLightLength: number; // 0.20 to 0.45 (default 0.30 = 30%)
+  ambientLightGlowSize: number; // 0.5 to 2.0 (default 1.0)
+  ambientLightCount: 1 | 2; // 1 or 2 lights
+  ambientLightDirection: 'clockwise' | 'counter-clockwise' | 'alternating';
+  ambientBeatSync: boolean; // toggle (default true)
 
-  // Background Theme (Phase 3)
+  // Background Theme
   bgMode: BackgroundMode;
   bgSolidColor: string; // default '#000000'
-  bgGradientType: GradientType; // 'linear' | 'radial'
+  bgGradientType: GradientType; // 'linear' | 'radial' | 'conic'
   bgGradientAngle: number; // 0 to 360 degrees
-  bgGradientColors: string[]; // 2-3 colors
+  bgGradientColors: string[]; // 2-8 colors
   bgGradientPreset: string; // preset id or 'custom'
   bgIntensity: number; // 0.1 to 1.0 (default 1.0)
+  bgDim: number; // manual dim slider 0.0 to 0.9 (default 0.4)
+  bgGrain: number; // 0 to 10%
+  bgAnimatedGradient: boolean; // toggle (default false)
+  customGradient: CustomGradientConfig;
+  wallpaper: WallpaperConfig;
 
-  // Effects & Lyrics Tinting (Phase 4)
+  // Effects & Lyrics Tinting
   tintLyricsWithAccent: boolean; // default true
-  rippleEnabled: boolean; // default true
-  rippleStyle: RippleStyle; // 'rings' | 'pulse-only' | 'rings-pulse' (default 'rings-pulse')
-  rippleSize: number; // 0.5 to 2.0 (default 1.0)
-  rippleSpeed: number; // 0.5 to 2.0 (default 1.0)
-  rippleColor: RippleColor; // 'accent' | 'white' (default 'accent')
-  rippleShimmer: boolean; // default false
 
-  // Adaptive Quality & Performance (Phase 5)
+  // Adaptive Quality & Performance
   visualQuality: VisualQuality; // 'auto' | 'high' | 'medium' | 'low' | 'minimal' (default 'auto')
 }
 
@@ -287,15 +388,21 @@ export const DEFAULT_APPEARANCE_CONFIG: AppearanceConfig = {
   showStars: true,
   showConnectingLines: true,
 
-  // Ambient Moving Light (Phase 2)
+  // Ambient Moving Light & Sliding Perimeter Light
   ambientMotionMode: 'beat',
   ambientStyle: 'rim-bloom',
+  ambientLightStyle: 'sliding',
   ambientIntensity: 1.0,
   ambientMotionSpeed: 1.0,
   ambientBeatReaction: 1.0,
   ambientBeatSensitivity: 65,
+  ambientLightLength: 0.30,
+  ambientLightGlowSize: 1.0,
+  ambientLightCount: 1,
+  ambientLightDirection: 'clockwise',
+  ambientBeatSync: true,
 
-  // Background Theme (Phase 3)
+  // Background Theme
   bgMode: 'solid',
   bgSolidColor: '#000000',
   bgGradientType: 'linear',
@@ -303,17 +410,16 @@ export const DEFAULT_APPEARANCE_CONFIG: AppearanceConfig = {
   bgGradientColors: ['#090a0f', '#181b26', '#0d1117'],
   bgGradientPreset: 'midnight',
   bgIntensity: 1.0,
+  bgDim: 0.4,
+  bgGrain: 2,
+  bgAnimatedGradient: false,
+  customGradient: DEFAULT_CUSTOM_GRADIENT,
+  wallpaper: DEFAULT_WALLPAPER_CONFIG,
 
-  // Effects & Lyrics Tinting (Phase 4)
+  // Effects & Lyrics Tinting
   tintLyricsWithAccent: true,
-  rippleEnabled: true,
-  rippleStyle: 'rings-pulse',
-  rippleSize: 1.0,
-  rippleSpeed: 1.0,
-  rippleColor: 'accent',
-  rippleShimmer: false,
 
-  // Adaptive Quality & Performance (Phase 5)
+  // Adaptive Quality & Performance
   visualQuality: 'auto',
 };
 
@@ -328,16 +434,13 @@ export const APPEARANCE_PRESETS: AppearancePreset[] = [
   {
     id: 'late-night',
     name: 'Late night',
-    description: 'Pure black OLED, beat-synced rim & bloom, tinted lyrics, active word ripples',
+    description: 'Pure black OLED, beat-synced rim & bloom, tinted lyrics',
     config: {
       bgMode: 'solid',
       bgSolidColor: '#000000',
       ambientMotionMode: 'beat',
       ambientStyle: 'rim-bloom',
       tintLyricsWithAccent: true,
-      rippleEnabled: true,
-      rippleStyle: 'rings-pulse',
-      rippleColor: 'accent',
     },
   },
   {
@@ -349,15 +452,12 @@ export const APPEARANCE_PRESETS: AppearancePreset[] = [
       ambientMotionMode: 'beat',
       ambientStyle: 'rim-bloom',
       tintLyricsWithAccent: true,
-      rippleEnabled: true,
-      rippleStyle: 'rings-pulse',
-      rippleColor: 'accent',
     },
   },
   {
     id: 'sunset',
     name: 'Sunset',
-    description: 'Warm twilight gradient background with radiant golden glow and active ripples',
+    description: 'Warm twilight gradient background with radiant golden glow',
     config: {
       bgMode: 'gradient',
       bgGradientPreset: 'sunset',
@@ -367,9 +467,6 @@ export const APPEARANCE_PRESETS: AppearancePreset[] = [
       ambientMotionMode: 'beat',
       ambientStyle: 'rim-bloom',
       tintLyricsWithAccent: true,
-      rippleEnabled: true,
-      rippleStyle: 'rings-pulse',
-      rippleColor: 'accent',
     },
   },
   {
@@ -382,7 +479,6 @@ export const APPEARANCE_PRESETS: AppearancePreset[] = [
       ambientMotionMode: 'calm',
       ambientStyle: 'rim-only',
       tintLyricsWithAccent: false,
-      rippleEnabled: false,
     },
   },
   {
@@ -408,7 +504,6 @@ export const APPEARANCE_PRESETS: AppearancePreset[] = [
       showStars: true,
       showConnectingLines: true,
       tintLyricsWithAccent: true,
-      rippleEnabled: true,
     },
   },
   {

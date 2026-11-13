@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+declare const __ASTRALYR_PRO__: boolean;
+
 declare module '*.css' {
   const content: Record<string, string>;
   export default content;
@@ -105,6 +107,67 @@ interface Window {
       ) => Promise<{ deletedAudio: number; deletedArt: number; freedBytes: number }>;
       exportBackup: () => Promise<{ success: boolean; destDir?: string; error?: string }>;
       importBackup: () => Promise<{ success: boolean; importedCount: number; error?: string }>;
+    };
+    license?: {
+      getStatus: () => Promise<{
+        edition: 'desktop-trial' | 'desktop-pro' | 'desktop-free';
+        isTrialActive: boolean;
+        trialDaysRemaining: number;
+        trialExpired: boolean;
+        isPro: boolean;
+        licenseKeyMasked?: string;
+        customerName?: string;
+        customerEmail?: string;
+        licenseId?: string;
+        licenseIssued?: string;
+        verifiedOffline?: boolean;
+        instanceId?: string;
+        offlineDaysRemaining?: number;
+        tampered?: boolean;
+        provider: 'offline' | 'lemonsqueezy' | 'dodopayments';
+      }>;
+      activate: (
+        key: string,
+        provider?: 'offline' | 'lemonsqueezy' | 'dodopayments'
+      ) => Promise<{
+        success: boolean;
+        error?: string;
+        status: {
+          edition: 'desktop-trial' | 'desktop-pro' | 'desktop-free';
+          isTrialActive: boolean;
+          trialDaysRemaining: number;
+          trialExpired: boolean;
+          isPro: boolean;
+          licenseKeyMasked?: string;
+          customerName?: string;
+          customerEmail?: string;
+          licenseId?: string;
+          licenseIssued?: string;
+          verifiedOffline?: boolean;
+          instanceId?: string;
+          offlineDaysRemaining?: number;
+          tampered?: boolean;
+          provider: 'offline' | 'lemonsqueezy' | 'dodopayments';
+        };
+      }>;
+      deactivate: () => Promise<{
+        success: boolean;
+        error?: string;
+        status: {
+          edition: 'desktop-trial' | 'desktop-pro' | 'desktop-free';
+          isTrialActive: boolean;
+          trialDaysRemaining: number;
+          trialExpired: boolean;
+          isPro: boolean;
+        };
+      }>;
+      continueFree: () => Promise<{
+        edition: 'desktop-trial' | 'desktop-pro' | 'desktop-free';
+        isTrialActive: boolean;
+        trialDaysRemaining: number;
+        trialExpired: boolean;
+        isPro: boolean;
+      }>;
     };
   };
 }

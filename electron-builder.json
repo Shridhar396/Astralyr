@@ -10,12 +10,16 @@
   "files": [
     "dist/**/*",
     "dist-electron/**/*",
-    "assets/branding/**/*"
+    "assets/branding/**/*",
+    "!tools/**/*",
+    "!*.pem",
+    "!*.key",
+    "!sales_log.csv"
   ],
   "publish": {
     "provider": "github",
     "owner": "Shridhar396",
-    "repo": "Astralyr"
+    "repo": "astralyr-releases"
   },
   "win": {
     "target": [

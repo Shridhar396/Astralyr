@@ -42,7 +42,7 @@ export const ToastNotification: React.FC<ToastNotificationProps> = ({ toast, onD
   if (!toast) return null;
 
   return (
-    <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[80] flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-[#0e1017]/95 border border-white/15 text-white shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[80] flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-[#0e1017] border border-white/15 text-white shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-200">
       <div className="text-xs font-medium">{toast.message}</div>
 
       {toast.action && (

@@ -26,6 +26,33 @@ export function migrateStorage(): void {
         }
       }
     }
+
+    // 2. Clear leftover legacy ripple settings keys on startup (Step 2)
+    const rippleKeysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.includes('ripple') || key.includes('word_ripple'))) {
+        rippleKeysToRemove.push(key);
+      }
+    }
+    for (const k of rippleKeysToRemove) {
+      localStorage.removeItem(k);
+    }
+
+    // Also sanitize saved appearance config if stored in localStorage
+    const savedAppearance = localStorage.getItem('astralyr_appearance_config');
+    if (savedAppearance) {
+      try {
+        const parsed = JSON.parse(savedAppearance);
+        delete parsed.rippleEnabled;
+        delete parsed.rippleStyle;
+        delete parsed.rippleSize;
+        delete parsed.rippleSpeed;
+        delete parsed.rippleColor;
+        delete parsed.rippleShimmer;
+        localStorage.setItem('astralyr_appearance_config', JSON.stringify(parsed));
+      } catch {}
+    }
   } catch (err) {
     console.warn('[Astralyr] Error during localStorage migration:', err);
   }

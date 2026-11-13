@@ -89,7 +89,7 @@ export const BeatDebugOverlay: React.FC<BeatDebugOverlayProps> = ({ getBeatState
     <div className="fixed top-4 right-4 z-50 flex flex-col items-end space-y-2 pointer-events-none select-none font-mono text-[11px]">
       {/* FPS Badge (Key F) */}
       {showFps && (
-        <div className="bg-black/80 backdrop-blur-md border border-white/15 px-3 py-1.5 rounded-lg text-emerald-400 font-semibold shadow-xl flex items-center space-x-2">
+        <div className="bg-[#0c0d12] border border-white/15 px-3 py-1.5 rounded-lg text-emerald-400 font-semibold shadow-xl flex items-center space-x-2">
           <span>FPS: {fps}</span>
           <span className="text-white/40">|</span>
           <span className="text-white/70">{frameTimeMs} ms</span>
@@ -100,7 +100,7 @@ export const BeatDebugOverlay: React.FC<BeatDebugOverlayProps> = ({ getBeatState
 
       {/* Main Beat Debug HUD (Key D) */}
       {visible && displayState && (
-        <div className="bg-black/90 backdrop-blur-xl border border-white/20 p-4 rounded-xl shadow-2xl text-white/90 w-72 space-y-3 pointer-events-auto">
+        <div className="bg-[#0c0d12] border border-white/20 p-4 rounded-xl shadow-2xl text-white/90 w-72 space-y-3 pointer-events-auto">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-white/10 pb-2">
             <div className="flex items-center space-x-1.5">

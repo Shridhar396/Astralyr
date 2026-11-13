@@ -328,7 +328,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -858,7 +858,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
 
         {/* Delete Confirmation Dialog */}
         {playlistToDelete && (
-          <div className="absolute inset-0 z-40 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-100">
+          <div className="absolute inset-0 z-40 flex items-center justify-center p-4 bg-black/90 animate-in fade-in duration-100">
             <div className="w-full max-w-sm rounded-2xl bg-[#0e1017] border border-white/10 p-5 shadow-2xl text-white">
               <h3 className="text-sm font-semibold mb-2">Delete Playlist?</h3>
               <p className="text-xs text-white/60 mb-5 leading-relaxed">
@@ -885,7 +885,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
         )}
         {/* Track Delete Confirmation Dialog */}
         {trackToDelete && (
-          <div className="absolute inset-0 z-40 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-100">
+          <div className="absolute inset-0 z-40 flex items-center justify-center p-4 bg-black/90 animate-in fade-in duration-100">
             <div className="w-full max-w-sm rounded-2xl bg-[#0e1017] border border-white/10 p-5 shadow-2xl text-white">
               <h3 className="text-sm font-semibold mb-2">Remove Song</h3>
               <p className="text-xs text-white/60 mb-5 leading-relaxed">
@@ -934,7 +934,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
 
         {/* Library Storage & Backup Dialog */}
         {showStorageModal && (
-          <div className="absolute inset-0 z-40 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-100">
+          <div className="absolute inset-0 z-40 flex items-center justify-center p-4 bg-black/90 animate-in fade-in duration-100">
             <div className="w-full max-w-md rounded-2xl bg-[#0c0d12] border border-white/10 p-5 shadow-2xl text-white space-y-4">
               <div className="flex items-center justify-between pb-2 border-b border-white/10">
                 <div className="flex items-center space-x-2">

@@ -1,0 +1,115 @@
+name: Desktop Multi-Platform Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_ext: exe
+          - os: macos-latest
+            artifact_ext: dmg
+          - os: ubuntu-latest
+            artifact_ext: AppImage
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install Linux Build Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools libfuse2
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Tests & Verification
+        run: |
+          pnpm run test
+          pnpm run check:pro-stripped
+
+      - name: Build Web Assets for Electron
+        run: pnpm exec vite build --base=./
+        env:
+          ELECTRON_BUILD: '1'
+
+      - name: Compile Electron Main Process
+        run: pnpm run build:electron
+
+      - name: Package Desktop Artifacts
+        run: pnpm exec electron-builder --publish never
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: release/*.*
+          if-no-files-found: error
+
+  publish-public-release:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows-latest
+          path: all-releases/
+
+      - name: Download macOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-latest
+          path: all-releases/
+
+      - name: Download Linux Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-ubuntu-latest
+          path: all-releases/
+
+      - name: Generate Checksums
+        run: |
+          cd all-releases
+          sha256sum *.{exe,dmg,AppImage,zip} 2>/dev/null > checksums.txt || true
+          cat checksums.txt
+
+      - name: Publish to Public Releases Repo
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: Shridhar396/astralyr-releases
+          token: ${{ secrets.RELEASES_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+          files: |
+            all-releases/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false

@@ -1,20 +1,77 @@
-import React, { useEffect } from 'react';
-import { X, ExternalLink, Sparkles, Music2, Disc3 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, ExternalLink, Sparkles, Music2, Disc3, Shield, Key } from 'lucide-react';
 import appIcon from '../../assets/branding/astralyr-icon.png';
+import { getEdition, isElectronApp } from '../features';
 
 interface AboutModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenLicense?: () => void;
+  onOpenLegal?: (doc?: 'eula' | 'privacy' | 'terms' | 'refund') => void;
 }
 
-export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
-  // Close on Escape key
+export const AboutModal: React.FC<AboutModalProps> = ({
+  isOpen,
+  onClose,
+  onOpenLicense,
+  onOpenLegal,
+}) => {
+  const [editionStatus, setEditionStatus] = useState<string>('Web Edition');
+  const [statusBadgeClass, setStatusBadgeClass] = useState<string>('bg-white/10 text-white/70');
+  const [licensedUser, setLicensedUser] = useState<string | null>(null);
+
   useEffect(() => {
     if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
+
+    const updateEdition = async () => {
+      const edition = getEdition();
+      if (edition === 'desktop-pro') {
+        setEditionStatus('Astralyr Pro Active');
+        setStatusBadgeClass('bg-emerald-500/20 text-emerald-300 border-emerald-500/30');
+        if (window.electronAPI?.license?.getStatus) {
+          try {
+            const s = await window.electronAPI.license.getStatus();
+            if (s.customerName && s.customerEmail) {
+              setLicensedUser(`Licensed to ${s.customerName} (${s.customerEmail}) · Pro`);
+            } else if (s.customerName) {
+              setLicensedUser(`Licensed to ${s.customerName} · Pro`);
+            } else if (s.customerEmail) {
+              setLicensedUser(`Licensed to ${s.customerEmail} · Pro`);
+            } else {
+              setLicensedUser('Astralyr Pro · Lifetime License');
+            }
+          } catch {
+            setLicensedUser(null);
+          }
+        }
+      } else if (edition === 'desktop-trial') {
+        setLicensedUser(null);
+        if (window.electronAPI?.license?.getStatus) {
+          try {
+            const s = await window.electronAPI.license.getStatus();
+            setEditionStatus(`Pro Trial (${s.trialDaysRemaining}d left)`);
+          } catch {
+            setEditionStatus('Pro Trial Active');
+          }
+        } else {
+          setEditionStatus('Pro Trial Active');
+        }
+        setStatusBadgeClass('bg-blue-500/20 text-blue-300 border-blue-500/30');
+      } else if (edition === 'desktop-free') {
+        setLicensedUser(null);
+        setEditionStatus('Astralyr Desktop Free');
+        setStatusBadgeClass('bg-white/10 text-white/70 border-white/15');
+      } else {
+        setLicensedUser(null);
+        setEditionStatus('Astralyr Web');
+        setStatusBadgeClass('bg-white/10 text-white/70 border-white/15');
       }
+    };
+
+    updateEdition();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -24,7 +81,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -72,17 +129,30 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
         </h1>
 
         {/* Tagline */}
-        <p className="text-sm font-light text-white/70 mt-1 mb-3">
+        <p className="text-sm font-light text-white/70 mt-1 mb-2.5">
           your music, as a constellation
         </p>
 
-        {/* Version Badge */}
-        <div className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono text-white/60 mb-5">
-          v1.1.0 · synced lyrics + ambient light
+        {/* Version & License Edition Badges */}
+        <div className="flex items-center space-x-2 mb-2">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+            v1.1.0
+          </span>
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-[10px] font-medium ${statusBadgeClass}`}>
+            {editionStatus}
+          </span>
         </div>
 
+        {/* Licensed User Display */}
+        {licensedUser && (
+          <div className="text-[11px] text-emerald-400 font-medium mb-3 flex items-center space-x-1.5 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+            <Shield className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{licensedUser}</span>
+          </div>
+        )}
+
         {/* Features / Highlights */}
-        <div className="w-full bg-white/[0.03] border border-white/5 rounded-2xl p-3.5 mb-5 text-left text-xs space-y-2 text-white/75 font-light">
+        <div className="w-full bg-white/[0.03] border border-white/5 rounded-2xl p-3.5 mb-4 text-left text-xs space-y-2 text-white/75 font-light">
           <div className="flex items-center space-x-2.5">
             <Sparkles className="w-3.5 h-3.5 text-white/80 flex-shrink-0" />
             <span>Word-by-word synced starlight constellation lyrics</span>
@@ -97,9 +167,76 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        {/* Credits */}
-        <div className="text-[11px] text-white/45 font-light leading-relaxed mb-6">
-          Lyrics from LRCLIB. Music is never bundled or hosted.
+        {/* Licensing & Legal Links */}
+        <div className="w-full space-y-2 mb-4">
+          {isElectronApp() && onOpenLicense && (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenLicense();
+              }}
+              className="w-full py-1.5 px-3 rounded-xl bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/25 text-amber-300 text-xs font-medium flex items-center justify-center space-x-1.5 transition-colors"
+            >
+              <Key className="w-3.5 h-3.5" />
+              <span>Manage Desktop License</span>
+            </button>
+          )}
+
+          <div className="flex items-center justify-center space-x-3 text-[11px] text-white/50">
+            <button
+              onClick={() => {
+                if (onOpenLegal) {
+                  onClose();
+                  onOpenLegal('eula');
+                }
+              }}
+              className="hover:text-white underline-offset-4 hover:underline"
+            >
+              EULA
+            </button>
+            <span>·</span>
+            <button
+              onClick={() => {
+                if (onOpenLegal) {
+                  onClose();
+                  onOpenLegal('privacy');
+                }
+              }}
+              className="hover:text-white underline-offset-4 hover:underline"
+            >
+              Privacy
+            </button>
+            <span>·</span>
+            <button
+              onClick={() => {
+                if (onOpenLegal) {
+                  onClose();
+                  onOpenLegal('terms');
+                }
+              }}
+              className="hover:text-white underline-offset-4 hover:underline"
+            >
+              Terms
+            </button>
+            <span>·</span>
+            <button
+              onClick={() => {
+                if (onOpenLegal) {
+                  onClose();
+                  onOpenLegal('refund');
+                }
+              }}
+              className="hover:text-white underline-offset-4 hover:underline"
+            >
+              Refunds
+            </button>
+          </div>
+        </div>
+
+        {/* Disclaimers & Credits */}
+        <div className="text-[10px] text-white/40 font-light leading-relaxed mb-5 space-y-1">
+          <div>Lyrics may come from third-party sources (LRCLIB).</div>
+          <div>Audius tracks are subject to each artist's license.</div>
         </div>
 
         {/* Actions & Links */}

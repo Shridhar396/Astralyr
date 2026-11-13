@@ -39,7 +39,7 @@ export const LrcSearchModal: React.FC<LrcSearchModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85">
       <div className="glass-panel w-full max-w-md rounded-2xl p-6 border border-white/10 shadow-2xl relative font-mono text-xs">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-white/10">

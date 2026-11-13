@@ -40,20 +40,6 @@ interface ConstellationBranch {
   progress: number;
 }
 
-interface WordRippleItem {
-  active: boolean;
-  x: number;
-  y: number;
-  startTime: number;
-  duration: number;
-  ringsCount: number;
-  bassFactor: number;
-  color: 'accent' | 'white';
-  style: 'rings' | 'pulse-only' | 'rings-pulse';
-  sizeScale: number;
-  shimmer: boolean;
-}
-
 // 53-bit string hash for deterministic layout seed
 function cyrb53(str: string, seed = 0): number {
   let h1 = 0xdeadbeef ^ seed;
@@ -99,15 +85,7 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
   const getBeatStateRef = useRef(getBeatState);
   getBeatStateRef.current = getBeatState;
 
-  // Word Ripple object pool (max 4 alive, zero hot-loop allocations)
-  const ripplesPoolRef = useRef<WordRippleItem[]>([
-    { active: false, x: 0, y: 0, startTime: 0, duration: 1.4, ringsCount: 3, bassFactor: 1.0, color: 'accent', style: 'rings-pulse', sizeScale: 1.0, shimmer: false },
-    { active: false, x: 0, y: 0, startTime: 0, duration: 1.4, ringsCount: 3, bassFactor: 1.0, color: 'accent', style: 'rings-pulse', sizeScale: 1.0, shimmer: false },
-    { active: false, x: 0, y: 0, startTime: 0, duration: 1.4, ringsCount: 3, bassFactor: 1.0, color: 'accent', style: 'rings-pulse', sizeScale: 1.0, shimmer: false },
-    { active: false, x: 0, y: 0, startTime: 0, duration: 1.4, ringsCount: 3, bassFactor: 1.0, color: 'accent', style: 'rings-pulse', sizeScale: 1.0, shimmer: false },
-  ]);
   const lastActiveWordRef = useRef<{ lineIdx: number; wordIdx: number }>({ lineIdx: -1, wordIdx: -1 });
-  const lastWordSpawnTimeRef = useRef<number>(0);
 
   // Lazy load selected font locally
   useEffect(() => {
@@ -228,9 +206,6 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
     nodesRef.current = [];
     lineProgressRef.current = [];
     branchesRef.current = [];
-    for (let i = 0; i < ripplesPoolRef.current.length; i++) {
-      ripplesPoolRef.current[i].active = false;
-    }
     lastActiveWordRef.current = { lineIdx: -1, wordIdx: -1 };
   }, [lines]);
 
@@ -352,59 +327,16 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
         const lyricsFontFamily = getFontFamily(appCfg.lyricsFont || 'sf-style');
         const lyricsCase = appCfg.lyricsCase || 'original';
 
-        // Tinting & Ripple flags
+        // Tinting flag
         const isTinted = appCfg.tintLyricsWithAccent !== false;
-        const isRippleOn = appCfg.rippleEnabled !== false;
 
-        // Trigger Word Ripple on active word transition
+        // Track active word transition
         if (activeWordIdx !== -1 && nodes[activeWordIdx]) {
           if (
             activeLineIdx !== lastActiveWordRef.current.lineIdx ||
             activeWordIdx !== lastActiveWordRef.current.wordIdx
           ) {
             lastActiveWordRef.current = { lineIdx: activeLineIdx, wordIdx: activeWordIdx };
-
-            if (isRippleOn) {
-              const timeSinceLast = Math.abs(activeTime - lastWordSpawnTimeRef.current);
-              lastWordSpawnTimeRef.current = activeTime;
-
-              const isFast = timeSinceLast < 0.15;
-              const rStyle = appCfg.rippleStyle || 'rings-pulse';
-              const ringsCount = rStyle === 'pulse-only' ? 0 : (isFast ? 1 : 3);
-
-              const beatState = getBeatStateRef.current ? getBeatStateRef.current() : null;
-              const smoothedBass = beatState ? Math.max(0, Math.min(1.0, beatState.smoothedBass)) : 0;
-              const bassFactor = Math.max(1.0, Math.min(1.6, 1.0 + 0.5 * smoothedBass));
-
-              const speed = Math.max(0.5, Math.min(2.0, appCfg.rippleSpeed || 1.0));
-              const sizeScale = Math.max(0.5, Math.min(2.0, appCfg.rippleSize || 1.0));
-
-              const pool = ripplesPoolRef.current;
-              let targetSlot = pool.find((r) => !r.active);
-              if (!targetSlot) {
-                let oldestTime = Infinity;
-                for (let ri = 0; ri < pool.length; ri++) {
-                  if (pool[ri].startTime < oldestTime) {
-                    oldestTime = pool[ri].startTime;
-                    targetSlot = pool[ri];
-                  }
-                }
-              }
-
-              if (targetSlot) {
-                targetSlot.active = true;
-                targetSlot.x = nodes[activeWordIdx].x;
-                targetSlot.y = nodes[activeWordIdx].y;
-                targetSlot.startTime = activeTime;
-                targetSlot.duration = 1.4 / speed;
-                targetSlot.ringsCount = ringsCount;
-                targetSlot.bassFactor = bassFactor;
-                targetSlot.color = appCfg.rippleColor || 'accent';
-                targetSlot.style = rStyle;
-                targetSlot.sizeScale = sizeScale;
-                targetSlot.shimmer = Boolean(appCfg.rippleShimmer);
-              }
-            }
           }
         }
 
@@ -470,81 +402,7 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
           }
         }
 
-        // --- STEP B: Word Ripples (Concentric rings + soft-light pulse behind words) ---
-        const ripples = ripplesPoolRef.current;
-        for (let ri = 0; ri < ripples.length; ri++) {
-          const r = ripples[ri];
-          if (!r.active) continue;
-
-          const elapsed = activeTime - r.startTime;
-          if (elapsed < 0 || elapsed > r.duration + 0.3) {
-            r.active = false;
-            continue;
-          }
-
-          const ripR = r.color === 'white' ? 255 : ar;
-          const ripG = r.color === 'white' ? 255 : ag;
-          const ripB = r.color === 'white' ? 255 : ab;
-
-          // 1. Soft-light pulse behind word (in 200ms, out 900ms)
-          if (r.style === 'pulse-only' || r.style === 'rings-pulse') {
-            if (elapsed <= 1.1) {
-              let pulseAlpha = 0;
-              if (elapsed < 0.2) {
-                pulseAlpha = (elapsed / 0.2) * 0.35 * r.bassFactor;
-              } else {
-                pulseAlpha = Math.max(0, 1 - (elapsed - 0.2) / 0.9) * 0.35 * r.bassFactor;
-              }
-
-              if (pulseAlpha > 0.01) {
-                const pulseR = 60 * r.sizeScale * r.bassFactor;
-                const grad = ctx.createRadialGradient(r.x, r.y, 0, r.x, r.y, pulseR);
-                grad.addColorStop(0, `rgba(${ripR}, ${ripG}, ${ripB}, ${pulseAlpha * 0.45})`);
-                grad.addColorStop(0.5, `rgba(${ripR}, ${ripG}, ${ripB}, ${pulseAlpha * 0.18})`);
-                grad.addColorStop(1, `rgba(${ripR}, ${ripG}, ${ripB}, 0)`);
-                ctx.beginPath();
-                ctx.arc(r.x, r.y, pulseR, 0, Math.PI * 2);
-                ctx.fillStyle = grad;
-                ctx.fill();
-              }
-            }
-          }
-
-          // 2. Concentric rings (8px -> 240px over ~1.4s ease-out)
-          if (r.style === 'rings' || r.style === 'rings-pulse') {
-            for (let k = 0; k < r.ringsCount; k++) {
-              const ringElapsed = elapsed - k * 0.12;
-              const t = ringElapsed / r.duration;
-              if (t >= 0 && t <= 1.0) {
-                const easeOut = 1 - Math.pow(1 - t, 3);
-                const radius = (8 + (240 - 8) * easeOut) * r.sizeScale * r.bassFactor;
-                const ringAlpha = Math.min(0.75, 0.5 * (1 - easeOut) * r.bassFactor);
-
-                if (ringAlpha > 0.01) {
-                  ctx.beginPath();
-                  ctx.arc(r.x, r.y, radius, 0, Math.PI * 2);
-                  ctx.strokeStyle = `rgba(${ripR}, ${ripG}, ${ripB}, ${ringAlpha})`;
-                  ctx.lineWidth = 1.5;
-                  ctx.stroke();
-
-                  if (r.shimmer) {
-                    for (let s = 0; s < 4; s++) {
-                      const ang = easeOut * Math.PI + (s * Math.PI) / 2;
-                      const sx = r.x + Math.cos(ang) * radius;
-                      const sy = r.y + Math.sin(ang) * radius;
-                      ctx.beginPath();
-                      ctx.arc(sx, sy, 1.2, 0, Math.PI * 2);
-                      ctx.fillStyle = `rgba(255, 255, 255, ${ringAlpha * 0.5})`;
-                      ctx.fill();
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // --- STEP C: Vertical Stems & Node Elements ---
+        // --- STEP B: Vertical Stems & Node Elements ---
         for (let i = 0; i < N; i++) {
           const n = nodes[i];
           const isRevealed = activeTime >= n.startTime;

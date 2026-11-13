@@ -10,13 +10,12 @@ describe('AdaptiveQualityService', () => {
 
   it('provides comprehensive quality profiles for all 4 tiers', () => {
     expect(QUALITY_PROFILES.high.maxComets).toBe(3);
-    expect(QUALITY_PROFILES.high.maxRippleRings).toBe(3);
+    expect(QUALITY_PROFILES.high.meshFpsLimit).toBe(60);
     expect(QUALITY_PROFILES.medium.maxComets).toBe(2);
-    expect(QUALITY_PROFILES.medium.maxRippleRings).toBe(2);
+    expect(QUALITY_PROFILES.medium.meshFpsLimit).toBe(30);
     expect(QUALITY_PROFILES.low.maxComets).toBe(1);
-    expect(QUALITY_PROFILES.low.maxRippleRings).toBe(1);
+    expect(QUALITY_PROFILES.low.meshFpsLimit).toBe(0);
     expect(QUALITY_PROFILES.minimal.enableComets).toBe(false);
-    expect(QUALITY_PROFILES.minimal.enableRipples).toBe(false);
   });
 
   it('respects manual user tier selection over auto', () => {

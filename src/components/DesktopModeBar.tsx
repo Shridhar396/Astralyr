@@ -59,7 +59,7 @@ export const DesktopModeBar: React.FC<DesktopModeBarProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
       <div className="glass-panel w-full max-w-lg rounded-2xl p-6 border border-white/10 shadow-2xl relative max-h-[85vh] flex flex-col font-mono">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-white/10">

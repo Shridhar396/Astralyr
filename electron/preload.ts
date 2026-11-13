@@ -37,5 +37,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     exportBackup: () => ipcRenderer.invoke('library:export-backup'),
     importBackup: () => ipcRenderer.invoke('library:import-backup'),
   },
+  license: {
+    getStatus: () => ipcRenderer.invoke('license:get-status'),
+    activate: (key: string, provider?: string) => ipcRenderer.invoke('license:activate', key, provider),
+    deactivate: () => ipcRenderer.invoke('license:deactivate'),
+    continueFree: () => ipcRenderer.invoke('license:continue-free'),
+  },
 });
 

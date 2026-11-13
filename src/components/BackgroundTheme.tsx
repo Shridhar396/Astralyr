@@ -1,5 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { AppearanceConfig, clampColorForBackground } from '../services/appearanceConfig';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
+import {
+  AppearanceConfig,
+  clampColorForBackground,
+  CustomGradientConfig,
+  WallpaperConfig,
+} from '../services/appearanceConfig';
 import { extractAlbumColors, AlbumColors } from '../services/albumColorExtractor';
 import { MusicTrack } from '../types/lyrics';
 import { BeatState } from '../audio/beat';
@@ -8,28 +13,30 @@ interface BackgroundThemeProps {
   config: AppearanceConfig;
   currentTrack: MusicTrack;
   accentColor: string;
-  getBeatState: () => BeatState;
+  getBeatState?: () => BeatState;
+  onReadabilityWarning?: (isBright: boolean) => void;
 }
 
-interface MeshBlob {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  radius: number;
-  colorRgb: [number, number, number];
+// Generates a subtle SVG grain data URI to avoid color banding on gradients
+function generateGrainDataUri(amountPercent: number): string {
+  if (amountPercent <= 0) return '';
+  const opacity = Math.min(0.2, (amountPercent / 100) * 1.5);
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='128' height='128' viewBox='0 0 128 128'>
+    <filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.75' stitchTiles='stitch'/></filter>
+    <rect width='100%' height='100%' filter='url(#n)' opacity='${opacity.toFixed(3)}'/>
+  </svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
-function hexToRgb(hex: string): [number, number, number] {
+// Computes relative luminance from hex color string
+function hexToLuminance(hex: string): number {
+  if (!hex || hex === '#000000') return 0;
   let clean = hex.replace('#', '');
-  if (clean.length === 3) {
-    clean = clean.split('').map((c) => c + c).join('');
-  }
-  return [
-    parseInt(clean.substring(0, 2), 16) || 0,
-    parseInt(clean.substring(2, 4), 16) || 0,
-    parseInt(clean.substring(4, 6), 16) || 0,
-  ];
+  if (clean.length === 3) clean = clean.split('').map((c) => c + c).join('');
+  const r = (parseInt(clean.substring(0, 2), 16) || 0) / 255;
+  const g = (parseInt(clean.substring(2, 4), 16) || 0) / 255;
+  const b = (parseInt(clean.substring(4, 6), 16) || 0) / 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b;
 }
 
 export const BackgroundTheme: React.FC<BackgroundThemeProps> = ({
@@ -37,6 +44,7 @@ export const BackgroundTheme: React.FC<BackgroundThemeProps> = ({
   currentTrack,
   accentColor,
   getBeatState,
+  onReadabilityWarning,
 }) => {
   const {
     bgMode = 'solid',
@@ -45,6 +53,11 @@ export const BackgroundTheme: React.FC<BackgroundThemeProps> = ({
     bgGradientAngle = 135,
     bgGradientColors = ['#090a0f', '#181b26', '#0d1117'],
     bgIntensity = 1.0,
+    bgDim = 0.4,
+    bgGrain = 2,
+    bgAnimatedGradient = false,
+    customGradient,
+    wallpaper,
   } = config;
 
   const [albumColors, setAlbumColors] = useState<AlbumColors>({
@@ -52,7 +65,12 @@ export const BackgroundTheme: React.FC<BackgroundThemeProps> = ({
     secondary: '#120b18',
   });
 
-  // Extract album colors when track changes
+  const [wallpaperDataUrl, setWallpaperDataUrl] = useState<string | null>(null);
+  const [readabilityOverlayAlpha, setReadabilityOverlayAlpha] = useState<number>(0);
+  const animatedAngleRef = useRef<number>(bgGradientAngle);
+  const animFrameRef = useRef<number>(0);
+
+  // Extract album colors when track artwork changes
   useEffect(() => {
     let isCancelled = false;
     extractAlbumColors(currentTrack.artworkUrl, accentColor).then((cols) => {
@@ -65,201 +83,266 @@ export const BackgroundTheme: React.FC<BackgroundThemeProps> = ({
     };
   }, [currentTrack.artworkUrl, currentTrack.id, accentColor]);
 
-  // Compute CSS background for the current configuration
-  const computeBackgroundStyle = (): string => {
+  // Handle wallpaper or album artwork background with offscreen blur cache
+  useEffect(() => {
+    const isAlbum = bgMode === 'album' || (bgMode === 'wallpaper' && wallpaper?.useAlbumArt);
+    const sourceUrl = isAlbum ? currentTrack.artworkUrl : wallpaper?.url;
+
+    if (!sourceUrl) {
+      setWallpaperDataUrl(null);
+      return;
+    }
+
+    let isCancelled = false;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    img.onload = () => {
+      if (isCancelled) return;
+
+      const blurPx = Math.max(0, Math.min(60, wallpaper?.blur ?? 24));
+      const dimFactor = Math.max(0, Math.min(0.9, (wallpaper?.dim ?? 40) / 100));
+
+      // Offscreen downscaled canvas for blur (1/4 size if blur > 10)
+      const scale = blurPx > 10 ? 0.25 : 0.5;
+      const offscreen = document.createElement('canvas');
+      offscreen.width = Math.max(1, Math.round(img.width * scale));
+      offscreen.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = offscreen.getContext('2d')!;
+
+      // Apply image filters onto the offscreen render once
+      ctx.drawImage(img, 0, 0, offscreen.width, offscreen.height);
+
+      // Fast box blur approximation on canvas pixels to avoid full-screen CSS filter: blur
+      if (blurPx > 0) {
+        ctx.globalAlpha = 0.85;
+        const blurRadius = Math.round(blurPx * scale * 0.5);
+        for (let dx = -blurRadius; dx <= blurRadius; dx += Math.max(1, blurRadius)) {
+          for (let dy = -blurRadius; dy <= blurRadius; dy += Math.max(1, blurRadius)) {
+            ctx.drawImage(offscreen, dx, dy);
+          }
+        }
+        ctx.globalAlpha = 1.0;
+      }
+
+      // Read average luminance from sampled pixels for the Readability Guard
+      try {
+        const sampleData = ctx.getImageData(0, 0, Math.min(32, offscreen.width), Math.min(32, offscreen.height)).data;
+        let totalLum = 0;
+        let count = 0;
+        for (let i = 0; i < sampleData.length; i += 16) {
+          const r = sampleData[i] / 255;
+          const g = sampleData[i + 1] / 255;
+          const b = sampleData[i + 2] / 255;
+          totalLum += 0.299 * r + 0.587 * g + 0.114 * b;
+          count++;
+        }
+        const avgLum = (totalLum / Math.max(1, count)) * (1.0 - dimFactor);
+        const isTooBright = avgLum > 0.35;
+        if (onReadabilityWarning) onReadabilityWarning(isTooBright);
+        setReadabilityOverlayAlpha(isTooBright ? Math.min(0.65, (avgLum - 0.35) * 1.5) : 0);
+      } catch {
+        // Fallback for tainted canvas
+        setReadabilityOverlayAlpha(0);
+      }
+
+      try {
+        const resultUri = offscreen.toDataURL('image/jpeg', 0.85);
+        setWallpaperDataUrl(resultUri);
+      } catch {
+        setWallpaperDataUrl(sourceUrl);
+      }
+    };
+
+    img.onerror = () => {
+      if (!isCancelled) {
+        setWallpaperDataUrl(null);
+      }
+    };
+
+    img.src = sourceUrl;
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [bgMode, wallpaper?.url, wallpaper?.blur, wallpaper?.dim, wallpaper?.useAlbumArt, currentTrack.artworkUrl]);
+
+  // Compute CSS background string for the active configuration
+  const computeBackgroundStyle = (): { background: string; backgroundSize?: string; backgroundPosition?: string; backgroundRepeat?: string } => {
     switch (bgMode) {
       case 'solid': {
         const clamped = clampColorForBackground(bgSolidColor, 0.22, bgIntensity);
-        return clamped;
+        return { background: clamped };
       }
       case 'gradient': {
         const clampedColors = (bgGradientColors.length >= 2 ? bgGradientColors : ['#090a0f', '#181b26']).map((c) =>
           clampColorForBackground(c, 0.22, bgIntensity)
         );
+        const grainUri = generateGrainDataUri(bgGrain);
+        let grad = '';
         if (bgGradientType === 'radial') {
-          return `radial-gradient(circle at center, ${clampedColors.join(', ')})`;
+          grad = `radial-gradient(circle at center, ${clampedColors.join(', ')})`;
+        } else if (bgGradientType === 'conic') {
+          grad = `conic-gradient(from ${bgGradientAngle}deg at 50% 50%, ${clampedColors.join(', ')})`;
+        } else {
+          grad = `linear-gradient(${bgGradientAngle}deg, ${clampedColors.join(', ')})`;
         }
-        return `linear-gradient(${bgGradientAngle}deg, ${clampedColors.join(', ')})`;
+        return { background: grainUri ? `${grainUri}, ${grad}` : grad };
       }
+      case 'custom': {
+        const cg = customGradient || {
+          type: 'linear',
+          angle: 135,
+          centerX: 50,
+          centerY: 50,
+          stops: [
+            { id: '1', color: '#090a0f', position: 0 },
+            { id: '2', color: '#1f132b', position: 0.5 },
+            { id: '3', color: '#0d1117', position: 1 },
+          ],
+          smooth: true,
+          grain: 2,
+          animated: false,
+        };
+
+        const sortedStops = [...cg.stops].sort((a, b) => a.position - b.position);
+        const stopStrings = sortedStops.map((st) => {
+          const clamped = clampColorForBackground(st.color, 0.22, bgIntensity);
+          return `${clamped} ${Math.round(st.position * 100)}%`;
+        });
+
+        const grainUri = generateGrainDataUri(cg.grain || bgGrain);
+        let grad = '';
+        if (cg.type === 'radial') {
+          grad = `radial-gradient(circle at ${cg.centerX}% ${cg.centerY}%, ${stopStrings.join(', ')})`;
+        } else if (cg.type === 'conic') {
+          grad = `conic-gradient(from ${cg.angle}deg at ${cg.centerX}% ${cg.centerY}%, ${stopStrings.join(', ')})`;
+        } else {
+          grad = `linear-gradient(${cg.angle}deg, ${stopStrings.join(', ')})`;
+        }
+        return { background: grainUri ? `${grainUri}, ${grad}` : grad };
+      }
+      case 'wallpaper':
       case 'album': {
-        const dom = clampColorForBackground(albumColors.dominant, 0.22, bgIntensity);
-        const sec = clampColorForBackground(albumColors.secondary, 0.18, bgIntensity);
-        return `radial-gradient(ellipse at 50% 40%, ${dom} 0%, ${sec} 65%, #000000 100%)`;
-      }
-      case 'mesh': {
-        // Mesh background base is deep black
-        return '#000000';
+        if (wallpaperDataUrl) {
+          const dimPercent = Math.max(0, Math.min(90, wallpaper?.dim ?? 40));
+          const dimOverlay = `linear-gradient(rgba(0,0,0,${(dimPercent / 100).toFixed(2)}), rgba(0,0,0,${(dimPercent / 100).toFixed(2)}))`;
+          const tintOverlay =
+            wallpaper?.tintColor && (wallpaper?.tintOpacity || 0) > 0
+              ? `, linear-gradient(rgba(${parseInt(wallpaper.tintColor.slice(1, 3), 16) || 0}, ${parseInt(wallpaper.tintColor.slice(3, 5), 16) || 0}, ${parseInt(wallpaper.tintColor.slice(5, 7), 16) || 0}, ${(wallpaper.tintOpacity / 100).toFixed(2)}), rgba(0,0,0,0))`
+              : '';
+
+          const fit = wallpaper?.fit || 'cover';
+          const bgSize =
+            fit === 'cover'
+              ? `${wallpaper?.zoom || 100}%`
+              : fit === 'contain'
+              ? 'contain'
+              : fit === 'stretch'
+              ? '100% 100%'
+              : fit === 'tile'
+              ? 'auto'
+              : 'auto';
+
+          return {
+            background: `${dimOverlay}${tintOverlay}, url("${wallpaperDataUrl}")`,
+            backgroundSize: bgSize,
+            backgroundPosition: `${50 + (wallpaper?.offsetX || 0)}% ${50 + (wallpaper?.offsetY || 0)}%`,
+            backgroundRepeat: fit === 'tile' ? 'repeat' : 'no-repeat',
+          };
+        }
+        // Fallback if no artwork or wallpaper: use deep starlight dark
+        const dom = clampColorForBackground(albumColors.dominant || '#0a0d14', 0.22, bgIntensity);
+        const sec = clampColorForBackground(albumColors.secondary || '#120b18', 0.18, bgIntensity);
+        return { background: `radial-gradient(ellipse at 50% 40%, ${dom} 0%, ${sec} 65%, #000000 100%)` };
       }
       default:
-        return '#000000';
+        return { background: '#000000' };
     }
   };
 
-  const currentBg = computeBackgroundStyle();
+  const currentBgStyle = useMemo(() => computeBackgroundStyle(), [
+    bgMode,
+    bgSolidColor,
+    bgGradientType,
+    bgGradientAngle,
+    bgGradientColors,
+    bgIntensity,
+    bgGrain,
+    customGradient,
+    wallpaper,
+    wallpaperDataUrl,
+    albumColors,
+  ]);
 
-  // Dual-layer 800ms crossfade management
+  // Dual-layer 800ms crossfade between any two backgrounds
   const [layers, setLayers] = useState({
     active: 0 as 0 | 1,
-    layer0: currentBg,
-    layer1: currentBg,
+    layer0: currentBgStyle,
+    layer1: currentBgStyle,
   });
 
-  const lastBgRef = useRef(currentBg);
+  const lastBgKeyRef = useRef(JSON.stringify(currentBgStyle));
 
   useEffect(() => {
-    if (currentBg !== lastBgRef.current) {
-      lastBgRef.current = currentBg;
+    const key = JSON.stringify(currentBgStyle);
+    if (key !== lastBgKeyRef.current) {
+      lastBgKeyRef.current = key;
       setLayers((prev) => {
         if (prev.active === 0) {
-          return { active: 1, layer0: prev.layer0, layer1: currentBg };
+          return { active: 1, layer0: prev.layer0, layer1: currentBgStyle };
         } else {
-          return { active: 0, layer0: currentBg, layer1: prev.layer1 };
+          return { active: 0, layer0: currentBgStyle, layer1: prev.layer1 };
         }
       });
     }
-  }, [currentBg]);
+  }, [currentBgStyle]);
 
-  // Ambient Mesh Canvas
-  const meshCanvasRef = useRef<HTMLCanvasElement>(null);
-  const meshStateRef = useRef<{
-    blobs: MeshBlob[];
-    lastTime: number;
-    smoothedBass: number;
-  }>({
-    blobs: [],
-    lastTime: performance.now(),
-    smoothedBass: 0,
-  });
-
-  // Initialize or re-color mesh blobs
+  // Readability Guard: measure solid / gradient luminance
   useEffect(() => {
-    if (bgMode !== 'mesh') return;
-
-    const baseHex = albumColors.dominant || accentColor || '#10b981';
-    const c1 = hexToRgb(clampColorForBackground(baseHex, 0.22, bgIntensity));
-    const c2 = hexToRgb(clampColorForBackground(albumColors.secondary || '#3b82f6', 0.20, bgIntensity));
-    const c3 = hexToRgb(clampColorForBackground(accentColor || '#ec4899', 0.18, bgIntensity));
-    const c4 = hexToRgb(clampColorForBackground('#14b8a6', 0.18, bgIntensity));
-
-    meshStateRef.current.blobs = [
-      { x: 0.25, y: 0.3, vx: 0.015, vy: 0.012, radius: 0.35, colorRgb: c1 },
-      { x: 0.75, y: 0.35, vx: -0.018, vy: 0.014, radius: 0.38, colorRgb: c2 },
-      { x: 0.35, y: 0.75, vx: 0.012, vy: -0.016, radius: 0.36, colorRgb: c3 },
-      { x: 0.8, y: 0.8, vx: -0.014, vy: -0.015, radius: 0.34, colorRgb: c4 },
-    ];
-  }, [bgMode, albumColors, accentColor, bgIntensity]);
-
-  // Mesh animation loop
-  useEffect(() => {
-    if (bgMode !== 'mesh') return;
-    const canvas = meshCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d', { alpha: true });
-    if (!ctx) return;
-
-    let animId: number;
-
-    const resize = () => {
-      // 0.5x resolution for soft blurred mesh layer
-      const dpr = Math.min(1.0, window.devicePixelRatio || 1);
-      canvas.width = Math.round(window.innerWidth * dpr * 0.5);
-      canvas.height = Math.round(window.innerHeight * dpr * 0.5);
-    };
-
-    resize();
-    window.addEventListener('resize', resize);
-
-    const m = meshStateRef.current;
-
-    const render = () => {
-      const now = performance.now();
-      const dt = Math.max(0.001, Math.min(0.1, (now - m.lastTime) / 1000));
-      m.lastTime = now;
-
-      const w = canvas.width;
-      const h = canvas.height;
-
-      // Gentle bass reaction (smooth attack/decay, never flashing)
-      const beatState = getBeatState();
-      const targetBass = beatState?.smoothedBass || 0;
-      m.smoothedBass += (targetBass - m.smoothedBass) * Math.min(1.0, dt * 5.0);
-
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, w, h);
-
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-
-      const bassExpansion = m.smoothedBass * 0.08;
-
-      for (const blob of m.blobs) {
-        blob.x += blob.vx * dt;
-        blob.y += blob.vy * dt;
-
-        // Soft bounce within screen margins
-        if (blob.x < 0.1 || blob.x > 0.9) blob.vx *= -1;
-        if (blob.y < 0.1 || blob.y > 0.9) blob.vy *= -1;
-
-        const bx = blob.x * w;
-        const by = blob.y * h;
-        const radius = Math.min(w, h) * (blob.radius + bassExpansion);
-
-        const grad = ctx.createRadialGradient(bx, by, 0, bx, by, radius);
-        const [r, g, b] = blob.colorRgb;
-        const alpha = Math.min(0.65, (0.35 + m.smoothedBass * 0.15) * bgIntensity);
-        grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${alpha})`);
-        grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${alpha * 0.4})`);
-        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(bx, by, radius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.restore();
-
-      animId = requestAnimationFrame(render);
-    };
-
-    animId = requestAnimationFrame(render);
-
-    return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener('resize', resize);
-    };
-  }, [bgMode, getBeatState, bgIntensity]);
+    if (bgMode === 'solid') {
+      const lum = hexToLuminance(bgSolidColor);
+      const isBright = lum > 0.35;
+      if (onReadabilityWarning) onReadabilityWarning(isBright);
+      setReadabilityOverlayAlpha(isBright ? Math.min(0.65, (lum - 0.35) * 1.5) : 0);
+    } else if (bgMode === 'gradient') {
+      const lums = bgGradientColors.map(hexToLuminance);
+      const avgLum = lums.reduce((a, b) => a + b, 0) / Math.max(1, lums.length);
+      const isBright = avgLum > 0.35;
+      if (onReadabilityWarning) onReadabilityWarning(isBright);
+      setReadabilityOverlayAlpha(isBright ? Math.min(0.65, (avgLum - 0.35) * 1.5) : 0);
+    }
+  }, [bgMode, bgSolidColor, bgGradientColors, onReadabilityWarning]);
 
   return (
     <div className="fixed inset-0 pointer-events-none -z-20 overflow-hidden select-none bg-black">
       {/* Layer 0 (800ms crossfade) */}
       <div
-        className="absolute inset-0 transition-all duration-800 ease-in-out"
+        className="absolute inset-0 transition-opacity duration-800 ease-in-out"
         style={{
-          background: layers.layer0,
+          ...layers.layer0,
           opacity: layers.active === 0 ? 1 : 0,
         }}
       />
 
       {/* Layer 1 (800ms crossfade) */}
       <div
-        className="absolute inset-0 transition-all duration-800 ease-in-out"
+        className="absolute inset-0 transition-opacity duration-800 ease-in-out"
         style={{
-          background: layers.layer1,
+          ...layers.layer1,
           opacity: layers.active === 1 ? 1 : 0,
         }}
       />
 
-      {/* Ambient Mesh Layer (only active when mode === 'mesh') */}
-      {bgMode === 'mesh' && (
-        <canvas
-          ref={meshCanvasRef}
-          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-800 ease-in-out"
-          style={{ filter: 'blur(32px)' }}
+      {/* Readability Guard Dark Overlay (Applies automatically if background is too bright) */}
+      {readabilityOverlayAlpha > 0.01 && (
+        <div
+          className="absolute inset-0 transition-opacity duration-500 ease-in-out pointer-events-none"
+          style={{
+            backgroundColor: `rgba(0, 0, 0, ${readabilityOverlayAlpha.toFixed(2)})`,
+          }}
         />
       )}
     </div>
   );
 };
-

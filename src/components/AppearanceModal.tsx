@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   AppearanceConfig,
   AVAILABLE_FONTS,
@@ -9,14 +9,9 @@ import {
   DatePosition,
   TimeFormat,
   WordCase,
-  GRADIENT_PRESETS,
-  SOLID_SWATCHES,
-  BackgroundMode,
-  GradientType,
-  RippleStyle,
-  RippleColor,
   VisualQuality,
 } from '../services/appearanceConfig';
+import { BackgroundTabContent } from './BackgroundTabContent';
 import {
   Sliders,
   X,
@@ -35,8 +30,19 @@ import {
   Upload,
   Palette,
   Zap,
+  Lock,
 } from 'lucide-react';
 import { playlistDb } from '../services/playlistDb';
+import {
+  hasFeature,
+  FREE_ALLOWED_FONTS,
+  FREE_ALLOWED_THEMES,
+  FREE_GLOW_COLORS,
+  startProPreview,
+  isProPreviewActive,
+  hasUsedProPreview,
+  BUY_PRO_URL,
+} from '../features';
 
 interface AppearanceModalProps {
   isOpen: boolean;
@@ -47,6 +53,78 @@ interface AppearanceModalProps {
   initialTab?: 'presets' | 'time' | 'date' | 'lyrics' | 'ambient' | 'background' | 'effects' | 'library';
   onShowToast?: (message: string) => void;
 }
+
+interface DebouncedSliderProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+  formatValue?: (val: number) => string;
+  onChange: (val: number) => void;
+  description?: string;
+}
+
+const DebouncedSlider: React.FC<DebouncedSliderProps> = ({
+  label,
+  value,
+  min,
+  max,
+  step,
+  unit = '',
+  formatValue,
+  onChange,
+  description,
+}) => {
+  const [localVal, setLocalVal] = useState(value);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    setLocalVal(value);
+  }, [value]);
+
+  const handleChange = (newVal: number) => {
+    setLocalVal(newVal);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      onChange(newVal);
+    }, 250);
+  };
+
+  const handlePointerUp = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    onChange(localVal);
+  };
+
+  const display = formatValue ? formatValue(localVal) : `${localVal}${unit}`;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-1">
+        <div>
+          <span className="font-medium text-white">{label}</span>
+          {description && <div className="text-[10px] text-white/40">{description}</div>}
+        </div>
+        <span className="font-mono text-white/70">{display}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={localVal}
+        onChange={(e) => handleChange(parseFloat(e.target.value))}
+        onPointerUp={handlePointerUp}
+        onTouchEnd={handlePointerUp}
+        className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
+      />
+    </div>
+  );
+};
 
 export const AppearanceModal: React.FC<AppearanceModalProps> = ({
   isOpen,
@@ -95,7 +173,7 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md select-none animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 select-none animate-in fade-in duration-200">
       <div className="w-full max-w-xl max-h-[85vh] bg-[#0c0d12]/90 border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-xs text-white/90">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 bg-white/[0.02]">
@@ -230,25 +308,42 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
                 Choose a pre-crafted typography and layout preset, or fine-tune individually:
               </div>
               <div className="grid grid-cols-2 gap-3">
-                {APPEARANCE_PRESETS.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => onUpdateConfig(p.config)}
-                    className="p-3.5 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/25 text-left transition-all group flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="font-semibold text-white text-sm mb-1 group-hover:text-white transition-colors">
-                        {p.name}
+                {APPEARANCE_PRESETS.map((p) => {
+                  const isPresetLocked = !hasFeature('appearance_presets');
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        if (isPresetLocked) {
+                          if (!hasUsedProPreview()) {
+                            startProPreview();
+                            if (onShowToast) onShowToast('30s Pro Visuals Preview started!');
+                            onUpdateConfig(p.config);
+                          } else {
+                            if (onShowToast) onShowToast('Presets are exclusive to Astralyr Desktop Pro.');
+                          }
+                          return;
+                        }
+                        onUpdateConfig(p.config);
+                      }}
+                      className="p-3.5 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/25 text-left transition-all group flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="font-semibold text-white text-sm mb-1 group-hover:text-white transition-colors flex items-center justify-between">
+                          <span>{p.name}</span>
+                          {isPresetLocked && <Lock className="w-3.5 h-3.5 text-amber-400" />}
+                        </div>
+                        <div className="text-[11px] text-white/50 leading-relaxed">
+                          {p.description}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-white/50 leading-relaxed">
-                        {p.description}
+                      <div className="mt-3 pt-2 border-t border-white/5 text-[10px] text-white/40 font-mono flex items-center justify-between">
+                        <span>Click to apply</span>
+                        {isPresetLocked && <span className="text-amber-400/80">Pro</span>}
                       </div>
-                    </div>
-                    <div className="mt-3 pt-2 border-t border-white/5 text-[10px] text-white/40 font-mono">
-                      Click to apply
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -342,25 +437,43 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
               <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 space-y-2">
                 <div className="font-medium text-white">Time Font</div>
                 <div className="grid grid-cols-3 gap-2">
-                  {AVAILABLE_FONTS.map((f) => (
-                    <button
-                      key={f.id}
-                      onClick={() => onUpdateConfig({ timeFont: f.id })}
-                      className={`p-2.5 rounded-lg border text-left transition-all ${
-                        config.timeFont === f.id
-                          ? 'bg-white/20 border-white text-white'
-                          : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
-                      }`}
-                    >
-                      <div className="text-xs font-semibold truncate">{f.name}</div>
-                      <div
-                        className="text-sm mt-1 truncate opacity-90"
-                        style={{ fontFamily: f.family }}
+                  {AVAILABLE_FONTS.map((f) => {
+                    const isFontLocked = !hasFeature('all_fonts') && !FREE_ALLOWED_FONTS.includes(f.id);
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => {
+                          if (isFontLocked) {
+                            if (!hasUsedProPreview()) {
+                              startProPreview();
+                              if (onShowToast) onShowToast('30s Pro Visuals Preview started!');
+                              onUpdateConfig({ timeFont: f.id });
+                            } else {
+                              if (onShowToast) onShowToast(`${f.name} font is exclusive to Astralyr Desktop Pro.`);
+                            }
+                            return;
+                          }
+                          onUpdateConfig({ timeFont: f.id });
+                        }}
+                        className={`p-2.5 rounded-lg border text-left transition-all ${
+                          config.timeFont === f.id
+                            ? 'bg-white/20 border-white text-white'
+                            : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
+                        }`}
                       >
-                        12:45
-                      </div>
-                    </button>
-                  ))}
+                        <div className="text-xs font-semibold truncate flex items-center justify-between">
+                          <span>{f.name}</span>
+                          {isFontLocked && <Lock className="w-2.5 h-2.5 text-amber-400 flex-shrink-0" />}
+                        </div>
+                        <div
+                          className="text-sm mt-1 truncate opacity-90"
+                          style={{ fontFamily: f.family }}
+                        >
+                          12:45
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -498,25 +611,43 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
                     <div className="text-xs font-medium">Follows Time</div>
                     <div className="text-[10px] text-white/40">Default matching</div>
                   </button>
-                  {AVAILABLE_FONTS.map((f) => (
-                    <button
-                      key={f.id}
-                      onClick={() => onUpdateConfig({ dateFont: f.id })}
-                      className={`p-2 rounded-lg border text-left transition-all ${
-                        config.dateFont === f.id
-                          ? 'bg-white/20 border-white text-white'
-                          : 'bg-black/30 border-white/5 text-white/60 hover:text-white'
-                      }`}
-                    >
-                      <div className="text-xs font-medium truncate">{f.name}</div>
-                      <div
-                        className="text-[11px] truncate opacity-80"
-                        style={{ fontFamily: f.family }}
+                  {AVAILABLE_FONTS.map((f) => {
+                    const isFontLocked = !hasFeature('all_fonts') && !FREE_ALLOWED_FONTS.includes(f.id);
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => {
+                          if (isFontLocked) {
+                            if (!hasUsedProPreview()) {
+                              startProPreview();
+                              if (onShowToast) onShowToast('30s Pro Visuals Preview started!');
+                              onUpdateConfig({ dateFont: f.id });
+                            } else {
+                              if (onShowToast) onShowToast(`${f.name} font is exclusive to Astralyr Desktop Pro.`);
+                            }
+                            return;
+                          }
+                          onUpdateConfig({ dateFont: f.id });
+                        }}
+                        className={`p-2 rounded-lg border text-left transition-all ${
+                          config.dateFont === f.id
+                            ? 'bg-white/20 border-white text-white'
+                            : 'bg-black/30 border-white/5 text-white/60 hover:text-white'
+                        }`}
                       >
-                        Thu Nov 12
-                      </div>
-                    </button>
-                  ))}
+                        <div className="text-xs font-medium truncate flex items-center justify-between">
+                          <span>{f.name}</span>
+                          {isFontLocked && <Lock className="w-2 h-2 text-amber-400 flex-shrink-0" />}
+                        </div>
+                        <div
+                          className="text-[11px] truncate opacity-80"
+                          style={{ fontFamily: f.family }}
+                        >
+                          Thu Nov 12
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -548,25 +679,43 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
               <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 space-y-2">
                 <div className="font-medium text-white">Lyrics Font</div>
                 <div className="grid grid-cols-3 gap-2">
-                  {AVAILABLE_FONTS.map((f) => (
-                    <button
-                      key={f.id}
-                      onClick={() => onUpdateConfig({ lyricsFont: f.id })}
-                      className={`p-2.5 rounded-lg border text-left transition-all ${
-                        config.lyricsFont === f.id
-                          ? 'bg-white/20 border-white text-white'
-                          : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
-                      }`}
-                    >
-                      <div className="text-xs font-semibold truncate">{f.name}</div>
-                      <div
-                        className="text-xs mt-1 truncate opacity-85"
-                        style={{ fontFamily: f.family }}
+                  {AVAILABLE_FONTS.map((f) => {
+                    const isFontLocked = !hasFeature('all_fonts') && !FREE_ALLOWED_FONTS.includes(f.id);
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => {
+                          if (isFontLocked) {
+                            if (!hasUsedProPreview()) {
+                              startProPreview();
+                              if (onShowToast) onShowToast('30s Pro Visuals Preview started!');
+                              onUpdateConfig({ lyricsFont: f.id });
+                            } else {
+                              if (onShowToast) onShowToast(`${f.name} font is exclusive to Astralyr Desktop Pro.`);
+                            }
+                            return;
+                          }
+                          onUpdateConfig({ lyricsFont: f.id });
+                        }}
+                        className={`p-2.5 rounded-lg border text-left transition-all ${
+                          config.lyricsFont === f.id
+                            ? 'bg-white/20 border-white text-white'
+                            : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
+                        }`}
                       >
-                        constellation
-                      </div>
-                    </button>
-                  ))}
+                        <div className="text-xs font-semibold truncate flex items-center justify-between">
+                          <span>{f.name}</span>
+                          {isFontLocked && <Lock className="w-2.5 h-2.5 text-amber-400 flex-shrink-0" />}
+                        </div>
+                        <div
+                          className="text-xs mt-1 truncate opacity-85"
+                          style={{ fontFamily: f.family }}
+                        >
+                          constellation
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -707,127 +856,237 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
           {/* TAB: AMBIENT LIGHT */}
           {activeTab === 'ambient' && (
             <div className="space-y-4">
-              {/* Motion Mode */}
+              {/* Light Style Selector (Sliding light / Static rim / Beat pulse) */}
               <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium text-white">Motion Mode</div>
-                    <div className="text-[11px] text-white/50">Beat synchronization and perimeter comet travel</div>
+                    <div className="font-medium text-white">Light Style</div>
+                    <div className="text-[11px] text-white/50">Ambient light trajectory around window edges</div>
+                  </div>
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-white/10 text-white">
+                    {config.ambientLightStyle || 'sliding'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'sliding', label: 'Sliding Light', desc: 'Comet body travels around perimeter' },
+                    { id: 'static-rim', label: 'Static Rim', desc: 'Gentle static window rim glow' },
+                    { id: 'beat-pulse', label: 'Beat Pulse', desc: 'Breathing rim pulsing on kicks' },
+                  ].map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => onUpdateConfig({ ambientLightStyle: s.id as any })}
+                      className={`p-2.5 rounded-lg border text-left transition-all ${
+                        (config.ambientLightStyle || 'sliding') === s.id
+                          ? 'bg-white/20 border-white text-white shadow-sm'
+                          : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold">{s.label}</div>
+                      <div className="text-[10px] text-white/40 mt-0.5 leading-snug">{s.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sliding Light Settings (Shown when Sliding Light is active) */}
+              {(config.ambientLightStyle === 'sliding' || !config.ambientLightStyle) && (
+                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-3">
+                  <div className="font-medium text-white text-xs uppercase tracking-wider text-white/60">Sliding Motion Controls</div>
+                  
+                  {/* Number of Lights (1 vs 2) */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-medium text-white">Number of Lights</div>
+                      <div className="text-[10px] text-white/50">Single comet or dual opposing comets (180° offset)</div>
+                    </div>
+                    <div className="flex bg-black/40 p-0.5 rounded-lg border border-white/10">
+                      {[1, 2].map((cnt) => (
+                        <button
+                          key={cnt}
+                          onClick={() => onUpdateConfig({ ambientLightCount: cnt as 1 | 2 })}
+                          className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
+                            (config.ambientLightCount || 1) === cnt
+                              ? 'bg-white text-black shadow-sm'
+                              : 'text-white/60 hover:text-white'
+                          }`}
+                        >
+                          {cnt === 1 ? '1 Light' : '2 Lights'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Direction Selector */}
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-medium text-white">Direction</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'clockwise', label: 'Clockwise' },
+                        { id: 'counter-clockwise', label: 'Counter-CW' },
+                        { id: 'alternating', label: 'Alternating' },
+                      ].map((d) => (
+                        <button
+                          key={d.id}
+                          onClick={() => onUpdateConfig({ ambientLightDirection: d.id as any })}
+                          className={`py-1.5 px-2 rounded-lg border text-center text-xs font-medium transition-all ${
+                            (config.ambientLightDirection || 'clockwise') === d.id
+                              ? 'bg-white/20 border-white text-white'
+                              : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
+                          }`}
+                        >
+                          {d.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Length Slider (20% - 45%) */}
+                  <DebouncedSlider
+                    label="Comet Body Length"
+                    value={config.ambientLightLength ?? 0.30}
+                    min={0.20}
+                    max={0.45}
+                    step={0.01}
+                    formatValue={(v) => `${Math.round(v * 100)}%`}
+                    onChange={(val) => onUpdateConfig({ ambientLightLength: val })}
+                    description="Fraction of perimeter covered by the light body (25–35% default)"
+                  />
+
+                  {/* Speed Slider (0.5x - 2.5x) */}
+                  <DebouncedSlider
+                    label="Lap Speed"
+                    value={config.ambientMotionSpeed ?? 1.0}
+                    min={0.5}
+                    max={2.5}
+                    step={0.05}
+                    formatValue={(v) => `${v.toFixed(2)}x (~${(8 / v).toFixed(1)}s/lap)`}
+                    onChange={(val) => onUpdateConfig({ ambientMotionSpeed: val })}
+                    description="Lap time around window perimeter (~8s at 1.0x)"
+                  />
+                </div>
+              )}
+
+              {/* General Appearance Sliders */}
+              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-3">
+                <div className="font-medium text-white text-xs uppercase tracking-wider text-white/60">Glow & Intensity</div>
+
+                {/* Intensity Slider (0.2x - 2.0x) */}
+                <DebouncedSlider
+                  label="Intensity"
+                  value={config.ambientIntensity ?? 1.0}
+                  min={0.2}
+                  max={2.0}
+                  step={0.05}
+                  formatValue={(v) => `${Math.round(v * 100)}%`}
+                  onChange={(val) => onUpdateConfig({ ambientIntensity: val })}
+                  description="Brightness level of the ambient glow"
+                />
+
+                {/* Glow Size Slider (0.5x - 2.0x) */}
+                <DebouncedSlider
+                  label="Glow Size"
+                  value={config.ambientLightGlowSize ?? 1.0}
+                  min={0.5}
+                  max={2.0}
+                  step={0.05}
+                  formatValue={(v) => `${v.toFixed(2)}x`}
+                  onChange={(val) => onUpdateConfig({ ambientLightGlowSize: val })}
+                  description="Inward radial reach into the window"
+                />
+              </div>
+
+              {/* Beat Synchronization Controls */}
+              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-white">Beat Synchronization</div>
+                    <div className="text-[11px] text-white/50">Surge light brightness (+30%) on bass kicks</div>
+                  </div>
+                  <button
+                    onClick={() => onUpdateConfig({ ambientBeatSync: !(config.ambientBeatSync ?? true) })}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      (config.ambientBeatSync ?? true) ? 'bg-white' : 'bg-white/20'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
+                        (config.ambientBeatSync ?? true) ? 'translate-x-4.5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {(config.ambientBeatSync ?? true) && (
+                  <div className="space-y-3 pt-2 border-t border-white/5">
+                    {/* Beat Reaction */}
+                    <DebouncedSlider
+                      label="Beat Reaction Multiplier"
+                      value={config.ambientBeatReaction ?? 1.0}
+                      min={0.0}
+                      max={2.0}
+                      step={0.05}
+                      formatValue={(v) => `${v.toFixed(2)}x`}
+                      onChange={(val) => onUpdateConfig({ ambientBeatReaction: val })}
+                    />
+
+                    {/* Beat Sensitivity */}
+                    <DebouncedSlider
+                      label="Beat Sensitivity"
+                      value={config.ambientBeatSensitivity ?? 65}
+                      min={0}
+                      max={100}
+                      step={1}
+                      formatValue={(v) => `${Math.round(v)}`}
+                      onChange={(val) => onUpdateConfig({ ambientBeatSensitivity: val })}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Motion Dynamics Preset (off/calm/beat/party) */}
+              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-white">Motion Dynamics Preset</div>
+                    <div className="text-[11px] text-white/50">Presets for ambient movement behavior</div>
                   </div>
                   <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-white/10 text-white">
                     {config.ambientMotionMode}
                   </span>
                 </div>
                 <div className="grid grid-cols-4 gap-2">
-                  {(['off', 'calm', 'beat', 'party'] as const).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => onUpdateConfig({ ambientMotionMode: m })}
-                      className={`py-2 px-2 rounded-lg border text-center font-medium capitalize text-xs transition-all ${
-                        config.ambientMotionMode === m
-                          ? 'bg-white/20 border-white text-white shadow-sm'
-                          : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
-                      }`}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Style: Rim + Bloom / Soft bloom only / Rim only */}
-              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
-                <div className="font-medium text-white">Light Style</div>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'rim-bloom', label: 'Rim + Bloom', desc: 'Neon rim + inner bloom' },
-                    { id: 'bloom-only', label: 'Soft Bloom Only', desc: 'No thin border line' },
-                    { id: 'rim-only', label: 'Rim Only', desc: 'Crisp 2px neon rim' },
-                  ].map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => onUpdateConfig({ ambientStyle: s.id as any })}
-                      className={`p-2.5 rounded-lg border text-left transition-all ${
-                        config.ambientStyle === s.id
-                          ? 'bg-white/20 border-white text-white'
-                          : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
-                      }`}
-                    >
-                      <div className="text-xs font-semibold">{s.label}</div>
-                      <div className="text-[10px] text-white/40 mt-0.5">{s.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Sliders Grid */}
-              <div className="space-y-3 p-3.5 rounded-xl bg-white/[0.03] border border-white/10">
-                {/* Intensity */}
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-medium text-white">Intensity</span>
-                    <span className="font-mono text-white/70">{Math.round(config.ambientIntensity * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.2"
-                    max="2.0"
-                    step="0.05"
-                    value={config.ambientIntensity}
-                    onChange={(e) => onUpdateConfig({ ambientIntensity: parseFloat(e.target.value) })}
-                    className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
-                  />
-                </div>
-
-                {/* Motion Speed */}
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-medium text-white">Motion Speed</span>
-                    <span className="font-mono text-white/70">{config.ambientMotionSpeed.toFixed(2)}x</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.2"
-                    max="2.0"
-                    step="0.05"
-                    value={config.ambientMotionSpeed}
-                    onChange={(e) => onUpdateConfig({ ambientMotionSpeed: parseFloat(e.target.value) })}
-                    className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
-                  />
-                </div>
-
-                {/* Beat Reaction */}
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-medium text-white">Beat Reaction</span>
-                    <span className="font-mono text-white/70">{config.ambientBeatReaction.toFixed(2)}x</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.0"
-                    max="2.0"
-                    step="0.05"
-                    value={config.ambientBeatReaction}
-                    onChange={(e) => onUpdateConfig({ ambientBeatReaction: parseFloat(e.target.value) })}
-                    className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
-                  />
-                </div>
-
-                {/* Beat Sensitivity */}
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-medium text-white">Beat Sensitivity</span>
-                    <span className="font-mono text-white/70">{Math.round(config.ambientBeatSensitivity)}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={config.ambientBeatSensitivity}
-                    onChange={(e) => onUpdateConfig({ ambientBeatSensitivity: parseInt(e.target.value, 10) })}
-                    className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
-                  />
+                  {(['off', 'calm', 'beat', 'party'] as const).map((m) => {
+                    const isModeLocked = (m === 'beat' || m === 'party') && !hasFeature('moving_ambient_light');
+                    return (
+                      <button
+                        key={m}
+                        onClick={() => {
+                          if (isModeLocked) {
+                            if (!hasUsedProPreview()) {
+                              startProPreview();
+                              if (onShowToast) onShowToast('30s Pro Visuals Preview started!');
+                              onUpdateConfig({ ambientMotionMode: m });
+                            } else {
+                              if (onShowToast) onShowToast(`${m} motion is exclusive to Astralyr Desktop Pro.`);
+                            }
+                            return;
+                          }
+                          onUpdateConfig({ ambientMotionMode: m });
+                        }}
+                        className={`py-2 px-2 rounded-lg border text-center font-medium capitalize text-xs transition-all ${
+                          config.ambientMotionMode === m
+                            ? 'bg-white/20 border-white text-white shadow-sm'
+                            : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <span className="flex items-center justify-center space-x-1">
+                          <span>{m}</span>
+                          {isModeLocked && <Lock className="w-2.5 h-2.5 text-amber-400" />}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -841,359 +1100,17 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
 
           {/* TAB: BACKGROUND THEMES */}
           {activeTab === 'background' && (
-            <div className="space-y-4">
-              {/* Background Mode Selector */}
-              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-white">Background Mode</div>
-                    <div className="text-[11px] text-white/50">Theme style behind lyrics and ambient light</div>
-                  </div>
-                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-white/10 text-white">
-                    {config.bgMode}
-                  </span>
-                </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {(
-                    [
-                      { id: 'solid', label: 'Solid' },
-                      { id: 'gradient', label: 'Gradient' },
-                      { id: 'album', label: 'Album Color' },
-                      { id: 'mesh', label: 'Ambient Mesh' },
-                    ] as const
-                  ).map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => onUpdateConfig({ bgMode: m.id })}
-                      className={`py-2 px-1 rounded-lg border text-center font-medium text-xs transition-all ${
-                        config.bgMode === m.id
-                          ? 'bg-white/20 border-white text-white shadow-sm'
-                          : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* MODE: SOLID */}
-              {config.bgMode === 'solid' && (
-                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-3">
-                  <div className="font-medium text-white">Solid Color Swatches</div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {SOLID_SWATCHES.map((s) => (
-                      <button
-                        key={s.hex}
-                        onClick={() => onUpdateConfig({ bgSolidColor: s.hex })}
-                        className={`p-2.5 rounded-lg border flex items-center space-x-2 text-left transition-all ${
-                          config.bgSolidColor.toLowerCase() === s.hex.toLowerCase()
-                            ? 'bg-white/20 border-white text-white'
-                            : 'bg-black/30 border-white/5 text-white/60 hover:text-white hover:bg-white/5'
-                        }`}
-                      >
-                        <span
-                          className="w-4 h-4 rounded-full border border-white/30 flex-shrink-0"
-                          style={{ backgroundColor: s.hex }}
-                        />
-                        <span className="text-[11px] font-medium truncate">{s.name}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Custom Color Picker */}
-                  <div className="pt-2 border-t border-white/10 flex items-center justify-between">
-                    <span className="text-white/70">Custom Solid Color</span>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="color"
-                        value={config.bgSolidColor}
-                        onChange={(e) => onUpdateConfig({ bgSolidColor: e.target.value })}
-                        className="w-8 h-8 rounded border border-white/20 bg-transparent cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={config.bgSolidColor}
-                        onChange={(e) => onUpdateConfig({ bgSolidColor: e.target.value })}
-                        className="w-24 px-2 py-1 rounded bg-black/50 border border-white/20 text-white font-mono text-[11px] outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* MODE: GRADIENT */}
-              {config.bgMode === 'gradient' && (
-                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-3">
-                  {/* Presets */}
-                  <div>
-                    <div className="font-medium text-white mb-2">Gradient Presets</div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {GRADIENT_PRESETS.map((p) => (
-                        <button
-                          key={p.id}
-                          onClick={() =>
-                            onUpdateConfig({
-                              bgGradientPreset: p.id,
-                              bgGradientType: p.type,
-                              bgGradientColors: p.colors,
-                              bgGradientAngle: p.angle,
-                            })
-                          }
-                          className={`p-2.5 rounded-lg border text-left transition-all relative overflow-hidden ${
-                            config.bgGradientPreset === p.id
-                              ? 'border-white text-white shadow-md'
-                              : 'border-white/10 text-white/70 hover:border-white/30'
-                          }`}
-                          style={{
-                            background: `linear-gradient(${p.angle}deg, ${p.colors.join(', ')})`,
-                          }}
-                        >
-                          <div className="relative z-10 font-bold text-xs drop-shadow">{p.name}</div>
-                          <div className="relative z-10 text-[10px] text-white/60">{p.type}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Type: Linear vs Radial */}
-                  <div className="pt-2 border-t border-white/10 flex items-center justify-between">
-                    <span className="text-white/70">Gradient Type</span>
-                    <div className="flex space-x-1 bg-black/40 p-0.5 rounded-lg border border-white/10">
-                      {(['linear', 'radial'] as const).map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => onUpdateConfig({ bgGradientType: t, bgGradientPreset: 'custom' })}
-                          className={`px-3 py-1 rounded capitalize font-medium text-xs transition-all ${
-                            config.bgGradientType === t
-                              ? 'bg-white/20 text-white shadow-sm'
-                              : 'text-white/50 hover:text-white'
-                          }`}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Angle slider (if linear) */}
-                  {config.bgGradientType === 'linear' && (
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[11px]">
-                        <span className="text-white/70">Gradient Angle</span>
-                        <span className="font-mono text-white/60">{config.bgGradientAngle}°</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="360"
-                        step="5"
-                        value={config.bgGradientAngle}
-                        onChange={(e) =>
-                          onUpdateConfig({
-                            bgGradientAngle: parseInt(e.target.value, 10),
-                            bgGradientPreset: 'custom',
-                          })
-                        }
-                        className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
-                      />
-                    </div>
-                  )}
-
-                  {/* Colors */}
-                  <div className="pt-2 border-t border-white/10 space-y-2">
-                    <div className="text-[11px] text-white/70">Gradient Colors (2–3 colors)</div>
-                    <div className="flex space-x-3">
-                      {config.bgGradientColors.map((color, idx) => (
-                        <div key={idx} className="flex items-center space-x-1.5 bg-black/40 p-1.5 rounded-lg border border-white/10">
-                          <input
-                            type="color"
-                            value={color}
-                            onChange={(e) => {
-                              const newCols = [...config.bgGradientColors];
-                              newCols[idx] = e.target.value;
-                              onUpdateConfig({ bgGradientColors: newCols, bgGradientPreset: 'custom' });
-                            }}
-                            className="w-6 h-6 rounded border border-white/20 bg-transparent cursor-pointer"
-                          />
-                          <span className="font-mono text-[10px] text-white/70">{color}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* MODE: ALBUM COLOR */}
-              {config.bgMode === 'album' && (
-                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
-                  <div className="font-semibold text-white">Album Artwork Tinting</div>
-                  <p className="text-[11px] text-white/60 leading-relaxed">
-                    Astralyr extracts the dominant and secondary colors from the current song's artwork (downscaled to 64×64 and cached).
-                    Colors are automatically clamped to ≤ 22% lightness to preserve high-contrast readability for lyrics and the clock.
-                  </p>
-                  <div className="text-[10px] text-white/40 italic">
-                    If a song has no artwork, your chosen accent color is used as a fallback.
-                  </div>
-                </div>
-              )}
-
-              {/* MODE: AMBIENT MESH */}
-              {config.bgMode === 'mesh' && (
-                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
-                  <div className="font-semibold text-white">Ambient Mesh Blobs</div>
-                  <p className="text-[11px] text-white/60 leading-relaxed">
-                    3–4 soft, large organic blurred blobs drift slowly behind the UI, gently swelling on each bass beat without rapid flashing.
-                  </p>
-                  <div className="text-[10px] text-white/40">
-                    Runs at capped resolution and 800ms crossfade transitions.
-                  </div>
-                </div>
-              )}
-
-              {/* INTENSITY SLIDER */}
-              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium text-white">Background Intensity</span>
-                  <span className="font-mono text-white/70">{Math.round(config.bgIntensity * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1.0"
-                  step="0.05"
-                  value={config.bgIntensity}
-                  onChange={(e) => onUpdateConfig({ bgIntensity: parseFloat(e.target.value) })}
-                  className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
-                />
-                <div className="text-[10px] text-white/40 pt-1">
-                  Base lightness is capped at 22% for perfect readability. Crossfades smoothly over 800ms.
-                </div>
-              </div>
-            </div>
+            <BackgroundTabContent
+              config={config}
+              onUpdateConfig={onUpdateConfig}
+              onShowToast={onShowToast}
+            />
           )}
 
           {/* TAB: VISUAL EFFECTS & PERFORMANCE */}
           {activeTab === 'effects' && (
             <div className="space-y-4">
-              {/* SECTION 1: WORD RIPPLE */}
-              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-white">Word Ripple Effect</div>
-                    <div className="text-[11px] text-white/50">
-                      Concentric rings & soft pulse expanding from active word star
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={config.rippleEnabled !== false}
-                    onChange={(e) => onUpdateConfig({ rippleEnabled: e.target.checked })}
-                    className="w-4 h-4 rounded accent-white cursor-pointer"
-                  />
-                </div>
-
-                {config.rippleEnabled !== false && (
-                  <div className="space-y-3 pt-2 border-t border-white/5">
-                    {/* Ripple Style */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-white/80">Ripple Style</span>
-                      <div className="flex rounded-lg bg-black/40 p-0.5 border border-white/10">
-                        {[
-                          { id: 'rings', label: 'Rings' },
-                          { id: 'pulse-only', label: 'Pulse only' },
-                          { id: 'rings-pulse', label: 'Rings + Pulse' },
-                        ].map((st) => (
-                          <button
-                            key={st.id}
-                            onClick={() => onUpdateConfig({ rippleStyle: st.id as RippleStyle })}
-                            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                              config.rippleStyle === st.id
-                                ? 'bg-white text-black shadow'
-                                : 'text-white/60 hover:text-white'
-                            }`}
-                          >
-                            {st.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Ripple Color */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-white/80">Ripple Color</span>
-                      <div className="flex rounded-lg bg-black/40 p-0.5 border border-white/10">
-                        {[
-                          { id: 'accent', label: 'Accent Color' },
-                          { id: 'white', label: 'Pure White' },
-                        ].map((c) => (
-                          <button
-                            key={c.id}
-                            onClick={() => onUpdateConfig({ rippleColor: c.id as RippleColor })}
-                            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                              config.rippleColor === c.id
-                                ? 'bg-white text-black shadow'
-                                : 'text-white/60 hover:text-white'
-                            }`}
-                          >
-                            {c.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Ripple Size */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-white/70">Ripple Size</span>
-                        <span className="font-mono text-white/90">{config.rippleSize.toFixed(1)}x</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="2.0"
-                        step="0.1"
-                        value={config.rippleSize}
-                        onChange={(e) => onUpdateConfig({ rippleSize: parseFloat(e.target.value) })}
-                        className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
-                      />
-                    </div>
-
-                    {/* Ripple Speed */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-white/70">Ripple Speed</span>
-                        <span className="font-mono text-white/90">{config.rippleSpeed.toFixed(1)}x</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="2.0"
-                        step="0.1"
-                        value={config.rippleSpeed}
-                        onChange={(e) => onUpdateConfig({ rippleSpeed: parseFloat(e.target.value) })}
-                        className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
-                      />
-                    </div>
-
-                    {/* Subtle Shimmer */}
-                    <div className="flex items-center justify-between pt-1">
-                      <div>
-                        <div className="text-white/90 font-medium text-xs">Subtle Shimmer</div>
-                        <div className="text-[10px] text-white/40">Faint sparkle dust along expanding ring</div>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(config.rippleShimmer)}
-                        onChange={(e) => onUpdateConfig({ rippleShimmer: e.target.checked })}
-                        className="w-4 h-4 rounded accent-white cursor-pointer"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* SECTION 2: LYRIC TINTING */}
+              {/* SECTION: LYRIC TINTING */}
               <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between">
                 <div>
                   <div className="font-semibold text-white">Tint lyrics with accent color</div>
@@ -1246,13 +1163,13 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
                   {(config.visualQuality || 'auto') === 'auto' &&
                     'Auto: Monitors 120-frame rolling average. Drops tier if frame times exceed 20ms for 3s; upgrades after 15s below 10ms.'}
                   {config.visualQuality === 'high' &&
-                    'High: Full 60fps, 3 comets, 4 drifting blobs, 3 ripple rings, dynamic mesh.'}
+                    'High: Full 60fps, dynamic sliding light, multi-sprite glow, fluid themes.'}
                   {config.visualQuality === 'medium' &&
-                    'Medium: 0.5x resolution, 2 comets, 2 blobs, 2 ripple rings, 30fps mesh.'}
+                    'Medium: 0.5x resolution, smooth sliding light, optimized performance.'}
                   {config.visualQuality === 'low' &&
-                    'Low: Static background, 1 comet, 1 ripple ring.'}
+                    'Low: Static rim, 1 light, minimal effects.'}
                   {config.visualQuality === 'minimal' &&
-                    'Minimal: Static rim only, ripples & comets disabled for max battery life.'}
+                    'Minimal: Static rim only, motion disabled for maximum battery life.'}
                 </div>
 
                 <div className="text-[10px] text-emerald-400/80 pt-1 flex items-center justify-between">

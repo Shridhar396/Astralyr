@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { Readable } from 'stream';
 import { LibraryManager } from './libraryManager';
+import { licensingManager } from './licensingManager';
 
 // Register privileged custom protocol for streaming local audio and artwork securely
 protocol.registerSchemesAsPrivileged([
@@ -225,7 +226,7 @@ if (!gotTheLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     createWindow();
 
     const libraryMgr = LibraryManager.getInstance();
@@ -237,6 +238,10 @@ if (!gotTheLock) {
 
     protocol.handle('astralyr-media', mediaHandler);
     protocol.handle('constella-media', mediaHandler);
+
+    // Desktop Licensing Manager & IPC
+    licensingManager.registerIpcHandlers();
+    await licensingManager.initialize();
 
     // Persistent Playlist & Library IPC Handlers
     ipcMain.handle('library:import-songs', async (_event, filePaths?: string[]) => {

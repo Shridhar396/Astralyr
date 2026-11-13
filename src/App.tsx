@@ -23,11 +23,21 @@ import { AudiusModal } from './components/AudiusModal';
 import { SettingsDrawer } from './components/SettingsDrawer';
 import { AppearanceModal } from './components/AppearanceModal';
 import { AboutModal } from './components/AboutModal';
+import { LicenseModal } from './components/LicenseModal';
+import { LegalModal } from './components/LegalModal';
 import { LibraryModal } from './components/LibraryModal';
 import { PlaylistNamingModal } from './components/PlaylistNamingModal';
 import { AddToPlaylistModal } from './components/AddToPlaylistModal';
 import { ToastNotification, ToastData } from './components/ToastNotification';
 import { playlistDb, Playlist, PlaylistTrack, DEFAULT_FAVORITES_ID } from './services/playlistDb';
+import {
+  setEdition,
+  getEdition,
+  hasFeature,
+  isElectronApp,
+  FREE_PLAYLIST_LIMIT,
+  FREE_TRACK_LIMIT,
+} from './features';
 import {
   AppearanceConfig,
   loadStoredAppearance,
@@ -131,6 +141,23 @@ export const App: React.FC = () => {
   const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
   const [initialAppearanceTab, setInitialAppearanceTab] = useState<'presets' | 'time' | 'date' | 'lyrics' | 'library' | undefined>(undefined);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isLicenseOpen, setIsLicenseOpen] = useState(false);
+  const [isLegalOpen, setIsLegalOpen] = useState(false);
+  const [legalDoc, setLegalDoc] = useState<'eula' | 'privacy' | 'terms' | 'refund'>('eula');
+
+  // Startup check for desktop licensing status
+  useEffect(() => {
+    if (isElectronApp() && window.electronAPI?.license?.getStatus) {
+      window.electronAPI.license.getStatus().then((status) => {
+        setEdition(status.edition);
+        if (status.trialExpired && status.edition !== 'desktop-pro' && status.edition !== 'desktop-free') {
+          setIsLicenseOpen(true);
+        }
+      }).catch((err) => {
+        console.warn('Could not retrieve license status:', err);
+      });
+    }
+  }, []);
 
   // Startup cleanup for legacy system audio localStorage keys
   useEffect(() => {
@@ -285,6 +312,10 @@ export const App: React.FC = () => {
       await playlistDb.removeTrackFromPlaylist(playlistId, track.id);
       showToast(`Removed from "${pl.name}"`);
     } else {
+      if (!hasFeature('unlimited_playlists') && pl.tracks.length >= FREE_TRACK_LIMIT) {
+        showToast(`Free/Web limit: ${FREE_TRACK_LIMIT} tracks per playlist. Upgrade to Astralyr Desktop Pro for unlimited tracks.`);
+        return;
+      }
       const res = await playlistDb.addTrackToPlaylist(playlistId, track);
       if (res.isDuplicate) {
         showToast(`Already in "${pl.name}"`);
@@ -295,6 +326,13 @@ export const App: React.FC = () => {
   }, [playlists, showToast]);
 
   const handleCreatePlaylistSubmit = useCallback(async (name: string, coverColor?: string, coverEmoji?: string) => {
+    if (!hasFeature('unlimited_playlists')) {
+      const customPlaylists = playlists.filter(p => p.id !== DEFAULT_FAVORITES_ID);
+      if (customPlaylists.length >= FREE_PLAYLIST_LIMIT) {
+        showToast(`Free/Web limit: ${FREE_PLAYLIST_LIMIT} custom playlist. Upgrade to Astralyr Desktop Pro for unlimited playlists.`);
+        return;
+      }
+    }
     try {
       const newPl = await playlistDb.createPlaylist(name, {
         coverColor,
@@ -309,7 +347,7 @@ export const App: React.FC = () => {
     } catch (e: any) {
       showToast(e.message || 'Failed to create playlist');
     }
-  }, [trackToAutoAdd, showToast]);
+  }, [playlists, trackToAutoAdd, showToast]);
 
   const handleRenamePlaylistSubmit = useCallback(async (name: string, coverColor?: string, coverEmoji?: string) => {
     if (!playlistToRename) return;
@@ -698,11 +736,31 @@ export const App: React.FC = () => {
         setIsChromeVisible(true);
       },
       setAppearanceConfig: handleUpdateAppearance,
-      openAppearanceModal: () => {
+      openAppearanceModal: (tab?: any) => {
+        if (tab) setInitialAppearanceTab(tab);
         setIsAppearanceOpen(true);
       },
       closeAppearanceModal: () => {
         setIsAppearanceOpen(false);
+      },
+      openLicenseModal: () => {
+        setIsLicenseOpen(true);
+      },
+      closeLicenseModal: () => {
+        setIsLicenseOpen(false);
+      },
+      openLegalModal: (doc?: any) => {
+        if (doc) setLegalDoc(doc);
+        setIsLegalOpen(true);
+      },
+      closeLegalModal: () => {
+        setIsLegalOpen(false);
+      },
+      openAboutModal: () => {
+        setIsAboutOpen(true);
+      },
+      closeAboutModal: () => {
+        setIsAboutOpen(false);
       },
       getCurrentTime: () => audioManager.current.getAcousticTime(),
       getMode: () => visualizerMode,
@@ -1328,9 +1386,15 @@ export const App: React.FC = () => {
         accentRgbRef={accentRgbRef}
         mode={appearanceConfig.ambientMotionMode}
         styleMode={appearanceConfig.ambientStyle}
+        lightStyle={appearanceConfig.ambientLightStyle}
         intensity={appearanceConfig.ambientIntensity * colorConfig.intensity}
         motionSpeed={appearanceConfig.ambientMotionSpeed}
         beatReaction={appearanceConfig.ambientBeatReaction}
+        lightLength={appearanceConfig.ambientLightLength}
+        glowSize={appearanceConfig.ambientLightGlowSize}
+        lightCount={appearanceConfig.ambientLightCount}
+        direction={appearanceConfig.ambientLightDirection}
+        beatSync={appearanceConfig.ambientBeatSync}
         autoCycle={colorConfig.mode === 'autocycle'}
         visualQuality={appearanceConfig.visualQuality}
       />
@@ -1479,6 +1543,25 @@ export const App: React.FC = () => {
       <AboutModal
         isOpen={isAboutOpen}
         onClose={() => setIsAboutOpen(false)}
+        onOpenLicense={() => setIsLicenseOpen(true)}
+        onOpenLegal={(doc) => {
+          if (doc) setLegalDoc(doc);
+          setIsLegalOpen(true);
+        }}
+      />
+
+      {/* Desktop License Modal */}
+      <LicenseModal
+        isOpen={isLicenseOpen}
+        onClose={() => setIsLicenseOpen(false)}
+        onShowToast={showToast}
+      />
+
+      {/* Legal & Policies Modal */}
+      <LegalModal
+        isOpen={isLegalOpen}
+        onClose={() => setIsLegalOpen(false)}
+        initialDoc={legalDoc}
       />
 
       {/* Library Modal */}

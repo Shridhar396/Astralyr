@@ -83,9 +83,15 @@ export default defineConfig({
     strictPort: true,
     host: true,
   },
+  define: {
+    __ASTRALYR_PRO__: JSON.stringify(isElectron),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@pro-engine': isElectron
+        ? path.resolve(__dirname, './src/pro/proModules.ts')
+        : path.resolve(__dirname, './src/pro/stubs.ts'),
     },
   },
   build: {

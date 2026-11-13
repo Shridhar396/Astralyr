@@ -6,12 +6,10 @@ export interface QualityProfile {
   tier: QualityTier;
   maxComets: number;
   maxBlobs: number;
-  maxRippleRings: number;
   meshFpsLimit: number; // 60, 30, or 0 (static)
   dprScale: number; // 1.0 or 0.5
   enableComets: boolean;
   enableBlobs: boolean;
-  enableRipples: boolean;
   staticBackground: boolean;
 }
 
@@ -20,48 +18,40 @@ export const QUALITY_PROFILES: Record<QualityTier, QualityProfile> = {
     tier: 'high',
     maxComets: 3,
     maxBlobs: 4,
-    maxRippleRings: 3,
     meshFpsLimit: 60,
     dprScale: 1.0,
     enableComets: true,
     enableBlobs: true,
-    enableRipples: true,
     staticBackground: false,
   },
   medium: {
     tier: 'medium',
     maxComets: 2,
     maxBlobs: 2,
-    maxRippleRings: 2,
     meshFpsLimit: 30,
     dprScale: 0.5,
     enableComets: true,
     enableBlobs: true,
-    enableRipples: true,
     staticBackground: false,
   },
   low: {
     tier: 'low',
     maxComets: 1,
     maxBlobs: 1,
-    maxRippleRings: 1,
     meshFpsLimit: 0,
     dprScale: 0.5,
     enableComets: true,
     enableBlobs: false,
-    enableRipples: true,
     staticBackground: true,
   },
   minimal: {
     tier: 'minimal',
     maxComets: 0,
     maxBlobs: 0,
-    maxRippleRings: 0,
     meshFpsLimit: 0,
     dprScale: 0.5,
     enableComets: false,
     enableBlobs: false,
-    enableRipples: false,
     staticBackground: true,
   },
 };
