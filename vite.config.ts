@@ -21,7 +21,7 @@ const isElectron =
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: isElectron ? './' : '/Constella/',
+  base: isElectron ? './' : '/Astralyr/',
   plugins: [
     react(),
     !isElectron &&

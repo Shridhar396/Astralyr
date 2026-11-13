@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://shridhar396.github.io/Constella/">🌐 Launch Web App</a> •
-  <a href="https://github.com/Shridhar396/Constella/releases">📦 Download Desktop App</a> •
+  <a href="https://shridhar396.github.io/Astralyr/">🌐 Launch Web App</a> •
+  <a href="https://github.com/Shridhar396/Astralyr/releases">📦 Download Desktop App</a> •
   <a href="#-features">Features</a> •
   <a href="#-installation">Install</a> •
   <a href="#-building-from-source">Build from Source</a> •
@@ -48,7 +48,7 @@
 ## 📦 Installation & Downloads
 
 ### 1. Desktop Application
-Precompiled native installers for Windows, macOS, and Linux are available on the [GitHub Releases page](https://github.com/Shridhar396/Constella/releases):
+Precompiled native installers for Windows, macOS, and Linux are available on the [GitHub Releases page](https://github.com/Shridhar396/Astralyr/releases):
 
 | Platform | Format | Instructions |
 |---|---|---|
@@ -61,7 +61,7 @@ Precompiled native installers for Windows, macOS, and Linux are available on the
 
 ### 2. Web Application & PWA
 Open the hosted live version at:
-👉 **[https://shridhar396.github.io/Constella/](https://shridhar396.github.io/Constella/)**
+👉 **[https://shridhar396.github.io/Astralyr/](https://shridhar396.github.io/Astralyr/)**
 
 - **Install as PWA**: Open the link in Google Chrome, Microsoft Edge, or Safari, and click the **Install App** icon in the address bar to add Astralyr as an offline desktop or mobile app.
 
@@ -91,8 +91,8 @@ Open the hosted live version at:
 ### Setup & Development
 ```bash
 # Clone the repository
-git clone https://github.com/Shridhar396/Constella.git
-cd Constella
+git clone https://github.com/Shridhar396/Astralyr.git
+cd Astralyr
 
 # Install dependencies
 pnpm install

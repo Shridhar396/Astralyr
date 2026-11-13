@@ -15,7 +15,7 @@
   "publish": {
     "provider": "github",
     "owner": "Shridhar396",
-    "repo": "Constella"
+    "repo": "Astralyr"
   },
   "win": {
     "target": [

@@ -105,7 +105,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
         {/* Actions & Links */}
         <div className="w-full flex items-center justify-between gap-3 pt-3 border-t border-white/10">
           <a
-            href="https://github.com/Shridhar396/Constella"
+            href="https://github.com/Shridhar396/Astralyr"
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 inline-flex items-center justify-center space-x-2 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white/80 hover:text-white transition-colors"
