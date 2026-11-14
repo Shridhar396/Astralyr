@@ -58,6 +58,23 @@ export function setEdition(edition: AstralyrEdition): void {
 export function getEdition(): AstralyrEdition {
   if (currentEditionOverride) return currentEditionOverride;
 
+  // Development override for testing Pro features in browser (STRICTLY excluded from production builds)
+  if (import.meta.env.DEV) {
+    if (import.meta.env.VITE_EDITION === 'desktop-pro') {
+      return 'desktop-pro';
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('edition') === 'pro') {
+          return 'desktop-pro';
+        }
+      } catch {
+        // ignore in non-browser env
+      }
+    }
+  }
+
   if (isElectronApp()) {
     // Check local storage or license cache for desktop edition
     const cached = localStorage.getItem('astralyr_edition');
@@ -68,6 +85,37 @@ export function getEdition(): AstralyrEdition {
   }
 
   return 'web';
+}
+
+export const ALL_FEATURE_GATES: FeatureName[] = [
+  'beat_engine',
+  'moving_ambient_light',
+  'mesh_background',
+  'album_background',
+  'custom_gradients',
+  'appearance_presets',
+  'all_fonts',
+  'unlimited_playlists',
+  'persistent_library',
+  'audius_downloads',
+  'auto_timing',
+  'offline_mode',
+  'desktop_controls',
+  'auto_update',
+];
+
+export function logFeatureGateStatus(): void {
+  const edition = getEdition();
+  const rows = ALL_FEATURE_GATES.map((f) => {
+    const allowed = hasFeature(f);
+    return {
+      'Feature Gate': f,
+      'Allowed': allowed,
+      'Returning False': !allowed,
+    };
+  });
+  console.log(`%c[Astralyr Edition] Active: ${edition}`, 'color: #38bdf8; font-weight: bold; font-size: 13px;');
+  console.table(rows);
 }
 
 export function isVisualFeature(feature: FeatureName): boolean {

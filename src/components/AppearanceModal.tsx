@@ -856,22 +856,21 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
           {/* TAB: AMBIENT LIGHT */}
           {activeTab === 'ambient' && (
             <div className="space-y-4">
-              {/* Light Style Selector (Sliding light / Static rim / Beat pulse) */}
+              {/* Light Style Selector (Sliding light / Off) */}
               <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium text-white">Light Style</div>
-                    <div className="text-[11px] text-white/50">Ambient light trajectory around window edges</div>
+                    <div className="font-medium text-white">Ambient Light</div>
+                    <div className="text-[11px] text-white/50">Soft perimeter sliding glow (zero edge lines)</div>
                   </div>
                   <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-white/10 text-white">
                     {config.ambientLightStyle || 'sliding'}
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {[
-                    { id: 'sliding', label: 'Sliding Light', desc: 'Comet body travels around perimeter' },
-                    { id: 'static-rim', label: 'Static Rim', desc: 'Gentle static window rim glow' },
-                    { id: 'beat-pulse', label: 'Beat Pulse', desc: 'Breathing rim pulsing on kicks' },
+                    { id: 'sliding', label: 'Sliding Light', desc: 'Soft glowing body travels around perimeter' },
+                    { id: 'off', label: 'Off', desc: 'Ambient light completely disabled' },
                   ].map((s) => (
                     <button
                       key={s.id}
@@ -1167,9 +1166,9 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
                   {config.visualQuality === 'medium' &&
                     'Medium: 0.5x resolution, smooth sliding light, optimized performance.'}
                   {config.visualQuality === 'low' &&
-                    'Low: Static rim, 1 light, minimal effects.'}
+                    'Low: 1 sliding light, optimized lightweight sprites.'}
                   {config.visualQuality === 'minimal' &&
-                    'Minimal: Static rim only, motion disabled for maximum battery life.'}
+                    'Minimal: Motion disabled for maximum battery life.'}
                 </div>
 
                 <div className="text-[10px] text-emerald-400/80 pt-1 flex items-center justify-between">

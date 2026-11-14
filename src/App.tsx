@@ -1365,12 +1365,12 @@ export const App: React.FC = () => {
 
   return (
     <div
-      className="relative w-screen h-screen overflow-hidden flex flex-col justify-between p-6 select-none bg-black"
+      className="relative w-screen h-screen overflow-hidden flex flex-col justify-between p-6 select-none bg-transparent"
       style={{
-        backgroundColor: desktopMode === 'wallpaper' ? 'transparent' : '#000000',
+        backgroundColor: 'transparent',
       }}
     >
-      {/* 0. Background Theme (Solid, Gradient, Album Color, Ambient Mesh with 800ms crossfade) */}
+      {/* 0. Background Theme (Solid, Gradient, Wallpaper, Album Color with 800ms crossfade) */}
       <BackgroundTheme
         config={appearanceConfig}
         currentTrack={currentTrack}
@@ -1378,7 +1378,7 @@ export const App: React.FC = () => {
         getBeatState={() => audioManager.current.getBeatState()}
       />
 
-      {/* 1. Moving Ambient Light (Neon rim + inner bloom, travelling perimeter comets & beat pulse) */}
+      {/* 1. Moving Ambient Light (Soft perimeter sliding glow, travelling perimeter comets & beat pulse) */}
       <MovingAmbientLight
         getBeatState={() => audioManager.current.getBeatState()}
         playbackState={playbackState}
@@ -1407,7 +1407,7 @@ export const App: React.FC = () => {
 
       {/* 2A. Synced Lyric Constellation Engine (Active when synced lyrics exist; 600ms crossfade) */}
       <div
-        className={`absolute inset-0 transition-opacity duration-600 ease-in-out ${
+        className={`absolute inset-0 z-10 transition-opacity duration-600 ease-in-out ${
           visualizerMode === 'lyrics' ? 'opacity-100 pointer-events-none' : 'opacity-0 pointer-events-none'
         }`}
       >
@@ -1425,7 +1425,7 @@ export const App: React.FC = () => {
 
       {/* 2B. Centered Audio Ring Visualizer (Automatic fallback when no synced lyrics; 600ms crossfade) */}
       <div
-        className={`absolute inset-0 transition-opacity duration-600 ease-in-out ${
+        className={`absolute inset-0 z-10 transition-opacity duration-600 ease-in-out ${
           visualizerMode === 'ring' ? 'opacity-100 pointer-events-none' : 'opacity-0 pointer-events-none'
         }`}
       >

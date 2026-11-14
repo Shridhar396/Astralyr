@@ -44,9 +44,9 @@ export const DesktopModeBar: React.FC<DesktopModeBarProps> = ({
     },
     {
       id: 'overlay',
-      title: 'Screen-Edge Rim Light Overlay',
+      title: 'Ambient Light Overlay',
       tag: 'Always On Top',
-      desc: 'Floats the glowing border rim light above all other windows while you work, code, or game.',
+      desc: 'Floats the glowing ambient light above all other windows while you work, code, or game.',
       icon: <AppWindow className="w-5 h-5 text-cyan-400" />,
     },
     {

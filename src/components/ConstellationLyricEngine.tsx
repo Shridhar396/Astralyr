@@ -285,7 +285,7 @@ export const ConstellationLyricEngine: React.FC<ConstellationLyricEngineProps> =
         }
       }
 
-      // Clear Canvas: pure #000000 background (no stars, no vignette)
+      // Clear Canvas (Transparent: background layer renders underneath)
       ctx.clearRect(0, 0, width, height);
 
       const nodes = nodesRef.current;

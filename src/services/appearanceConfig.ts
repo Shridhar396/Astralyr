@@ -14,9 +14,9 @@ export type DatePosition = 'above' | 'below';
 export type WordCase = 'original' | 'lowercase' | 'uppercase';
 
 export type AmbientMotionMode = 'off' | 'calm' | 'beat' | 'party';
-export type AmbientStyle = 'rim-bloom' | 'bloom-only' | 'rim-only';
+export type AmbientStyle = 'sliding' | 'off';
 
-export type AmbientLightStyle = 'sliding' | 'rim-bloom' | 'static-rim' | 'beat-pulse';
+export type AmbientLightStyle = 'sliding' | 'off';
 export type BackgroundMode = 'solid' | 'gradient' | 'custom' | 'wallpaper' | 'album' | 'mesh';
 export type GradientType = 'linear' | 'radial' | 'conic';
 
@@ -390,7 +390,7 @@ export const DEFAULT_APPEARANCE_CONFIG: AppearanceConfig = {
 
   // Ambient Moving Light & Sliding Perimeter Light
   ambientMotionMode: 'beat',
-  ambientStyle: 'rim-bloom',
+  ambientStyle: 'sliding',
   ambientLightStyle: 'sliding',
   ambientIntensity: 1.0,
   ambientMotionSpeed: 1.0,
@@ -434,12 +434,12 @@ export const APPEARANCE_PRESETS: AppearancePreset[] = [
   {
     id: 'late-night',
     name: 'Late night',
-    description: 'Pure black OLED, beat-synced rim & bloom, tinted lyrics',
+    description: 'Pure black OLED, sliding ambient light, tinted lyrics',
     config: {
       bgMode: 'solid',
       bgSolidColor: '#000000',
       ambientMotionMode: 'beat',
-      ambientStyle: 'rim-bloom',
+      ambientLightStyle: 'sliding',
       tintLyricsWithAccent: true,
     },
   },
@@ -450,7 +450,7 @@ export const APPEARANCE_PRESETS: AppearancePreset[] = [
     config: {
       bgMode: 'mesh',
       ambientMotionMode: 'beat',
-      ambientStyle: 'rim-bloom',
+      ambientLightStyle: 'sliding',
       tintLyricsWithAccent: true,
     },
   },
@@ -465,19 +465,19 @@ export const APPEARANCE_PRESETS: AppearancePreset[] = [
       bgGradientAngle: 180,
       bgGradientColors: ['#230b1e', '#3b1024', '#150616'],
       ambientMotionMode: 'beat',
-      ambientStyle: 'rim-bloom',
+      ambientLightStyle: 'sliding',
       tintLyricsWithAccent: true,
     },
   },
   {
     id: 'mono',
     name: 'Mono',
-    description: 'Pure black OLED with calm crisp white perimeter rim and neutral lyrics',
+    description: 'Pure black OLED with calm crisp white sliding light and neutral lyrics',
     config: {
       bgMode: 'solid',
       bgSolidColor: '#000000',
       ambientMotionMode: 'calm',
-      ambientStyle: 'rim-only',
+      ambientLightStyle: 'sliding',
       tintLyricsWithAccent: false,
     },
   },
@@ -665,9 +665,28 @@ const STORAGE_KEY = 'ambient_visualizer_appearance_v1';
 
 export function loadStoredAppearance(): AppearanceConfig {
   try {
+    // Clear legacy rim / ambient localStorage keys
+    try {
+      localStorage.removeItem('astralyr_ambient_style');
+      localStorage.removeItem('constella_ambient_style');
+      localStorage.removeItem('ambient_style');
+      localStorage.removeItem('astralyr_static_rim');
+    } catch {}
+
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      // Clean up legacy rim / static-rim / beat-pulse values
+      if (
+        parsed.ambientLightStyle === 'static-rim' ||
+        parsed.ambientLightStyle === 'rim-bloom' ||
+        parsed.ambientLightStyle === 'beat-pulse'
+      ) {
+        parsed.ambientLightStyle = 'sliding';
+      }
+      if (parsed.ambientStyle && parsed.ambientStyle !== 'sliding' && parsed.ambientStyle !== 'off') {
+        parsed.ambientStyle = parsed.ambientLightStyle === 'off' ? 'off' : 'sliding';
+      }
       return { ...DEFAULT_APPEARANCE_CONFIG, ...parsed };
     }
   } catch (e) {

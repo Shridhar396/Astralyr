@@ -398,6 +398,7 @@ export const DEMO_TRACKS: MusicTrack[] = [
     album: 'Electric Constellations',
     duration: 22,
     audioUrl: `${BASE}edm-beat.wav`.replace('//', '/'),
+    artworkUrl: `${BASE}astralyr-preview.png`.replace('//', '/'),
     primaryColor: '#ff2d75',
     secondaryColor: '#00f5d4',
     accentGlow: 'rgba(255, 45, 117, 0.85)',

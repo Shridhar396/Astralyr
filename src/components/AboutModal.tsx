@@ -159,7 +159,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({
           </div>
           <div className="flex items-center space-x-2.5">
             <Disc3 className="w-3.5 h-3.5 text-white/80 flex-shrink-0" />
-            <span>Beat-reactive ambient rim lighting & glow physics</span>
+            <span>Beat-reactive sliding ambient light & glow physics</span>
           </div>
           <div className="flex items-center space-x-2.5">
             <Music2 className="w-3.5 h-3.5 text-white/80 flex-shrink-0" />

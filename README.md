@@ -97,8 +97,12 @@ cd Astralyr
 # Install dependencies
 pnpm install
 
-# Start Vite web dev server
+# Start Vite web dev server (Web edition with feature gates)
 pnpm run dev
+
+# Start Vite web dev server with all Pro features unlocked for testing (Dev only)
+pnpm run dev:pro
+# Alternatively, append ?edition=pro in the browser during dev (e.g. http://localhost:5173/?edition=pro)
 
 # Start Electron desktop development
 pnpm run electron:dev

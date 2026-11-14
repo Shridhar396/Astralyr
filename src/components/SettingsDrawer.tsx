@@ -84,11 +84,11 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
             </div>
           </div>
 
-          {/* Screen-Edge Glow Border Settings */}
+          {/* Ambient Glow Settings */}
           <div>
             <div className="flex items-center space-x-2 mb-3 text-slate-300 font-bold uppercase tracking-wider">
               <Sparkles className="w-4 h-4 text-pink-400" />
-              <span>Beat-Reactive Screen Border Glow</span>
+              <span>Beat-Reactive Ambient Glow</span>
             </div>
 
             <div className="space-y-4 bg-black/30 p-4 rounded-xl border border-white/5">

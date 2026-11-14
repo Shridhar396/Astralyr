@@ -56,13 +56,13 @@ class RoundedRectPathTable {
     this.perimeter = totalP;
 
     // Segment boundaries along perimeter [0, totalP]
-    // 0: Top edge: [r, 0] to [width - r, 0]
+    // 0: Top side: [r, 0] to [width - r, 0]
     // 1: TR Corner: center [width - r, r], angle -PI/2 to 0
-    // 2: Right edge: [width, r] to [width, height - r]
+    // 2: Right side: [width, r] to [width, height - r]
     // 3: BR Corner: center [width - r, height - r], angle 0 to PI/2
-    // 4: Bottom edge: [width - r, height] to [r, height]
+    // 4: Bottom side: [width - r, height] to [r, height]
     // 5: BL Corner: center [r, height - r], angle PI/2 to PI
-    // 6: Left edge: [0, height - r] to [0, r]
+    // 6: Left side: [0, height - r] to [0, r]
     // 7: TL Corner: center [r, r], angle PI to 3*PI/2
 
     const segLengths = [
@@ -94,7 +94,7 @@ class RoundedRectPathTable {
       let x = 0, y = 0, nx = 0, ny = 0, corner = 0;
 
       switch (seg) {
-        case 0: { // Top edge -> normal points DOWN (0, 1)
+        case 0: { // Top side -> normal points DOWN (0, 1)
           x = r + segDist;
           y = 0;
           nx = 0;
@@ -112,7 +112,7 @@ class RoundedRectPathTable {
           corner = 1;
           break;
         }
-        case 2: { // Right edge -> normal points LEFT (-1, 0)
+        case 2: { // Right side -> normal points LEFT (-1, 0)
           x = width;
           y = r + segDist;
           nx = -1;
@@ -130,7 +130,7 @@ class RoundedRectPathTable {
           corner = 1;
           break;
         }
-        case 4: { // Bottom edge -> normal points UP (0, -1)
+        case 4: { // Bottom side -> normal points UP (0, -1)
           x = width - r - segDist;
           y = height;
           nx = 0;
@@ -148,7 +148,7 @@ class RoundedRectPathTable {
           corner = 1;
           break;
         }
-        case 6: { // Left edge -> normal points RIGHT (1, 0)
+        case 6: { // Left side -> normal points RIGHT (1, 0)
           x = 0;
           y = height - r - segDist;
           nx = 1;
@@ -210,7 +210,7 @@ export const MovingAmbientLight: React.FC<MovingAmbientLightProps> = ({
   colorRgb = [255, 75, 130],
   accentRgbRef,
   mode = 'beat',
-  styleMode = 'rim-bloom',
+  styleMode = 'sliding',
   lightStyle = 'sliding',
   intensity = 1.0,
   motionSpeed = 1.0,
@@ -226,50 +226,71 @@ export const MovingAmbientLight: React.FC<MovingAmbientLightProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pathTableRef = useRef<RoundedRectPathTable>(new RoundedRectPathTable());
   const spriteCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const headSpriteCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastSpriteKeyRef = useRef<string>('');
 
   const animStateRef = useRef({
     headProgress: 0.1,
     directionSign: 1,
     beatSurge: 0,
-    prevLuminance: 0.2,
+    prevLuminance: 0.40,
     lastFrameTime: performance.now(),
     autoCycleHue: 0,
     idleTransition: 1.0,
   });
 
-  // Pre-render soft radial-gradient glow sprite (rebuild ONLY on color/size change)
-  const getGlowSprite = (r: number, g: number, b: number): HTMLCanvasElement => {
+  // Pre-render soft seamless radial glow sprite
+  const getGlowSprite = (r: number, g: number, b: number): { body: HTMLCanvasElement; head: HTMLCanvasElement } => {
     const key = `${r}-${g}-${b}`;
-    if (spriteCanvasRef.current && lastSpriteKeyRef.current === key) {
-      return spriteCanvasRef.current;
+    if (spriteCanvasRef.current && headSpriteCanvasRef.current && lastSpriteKeyRef.current === key) {
+      return { body: spriteCanvasRef.current, head: headSpriteCanvasRef.current };
     }
 
     const size = 192;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d')!;
-
     const cx = size / 2;
     const cy = size / 2;
     const radius = size / 2;
 
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-    grad.addColorStop(0.0, `rgba(255, 255, 255, 0.95)`); // subtle lighter core at head
-    grad.addColorStop(0.18, `rgba(${r}, ${g}, ${b}, 0.85)`);
-    grad.addColorStop(0.45, `rgba(${r}, ${g}, ${b}, 0.35)`);
-    grad.addColorStop(0.72, `rgba(${r}, ${g}, ${b}, 0.10)`);
-    grad.addColorStop(1.0, `rgba(${r}, ${g}, ${b}, 0.0)`);
+    // 1. Continuous body sprite (seamless pure glow, no center hot spot)
+    const bodyCanvas = document.createElement('canvas');
+    bodyCanvas.width = size;
+    bodyCanvas.height = size;
+    const bctx = bodyCanvas.getContext('2d')!;
 
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fill();
+    const bgrad = bctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    bgrad.addColorStop(0.0, `rgba(${r}, ${g}, ${b}, 0.95)`);
+    bgrad.addColorStop(0.20, `rgba(${r}, ${g}, ${b}, 0.75)`);
+    bgrad.addColorStop(0.48, `rgba(${r}, ${g}, ${b}, 0.35)`);
+    bgrad.addColorStop(0.75, `rgba(${r}, ${g}, ${b}, 0.10)`);
+    bgrad.addColorStop(1.0, `rgba(${r}, ${g}, ${b}, 0.0)`);
 
-    spriteCanvasRef.current = canvas;
+    bctx.fillStyle = bgrad;
+    bctx.beginPath();
+    bctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    bctx.fill();
+
+    // 2. Comet head tip sprite (bright luminous core focal point at the very front)
+    const headCanvas = document.createElement('canvas');
+    headCanvas.width = size;
+    headCanvas.height = size;
+    const hctx = headCanvas.getContext('2d')!;
+
+    const hgrad = hctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    hgrad.addColorStop(0.0, `rgba(255, 255, 255, 0.98)`);
+    hgrad.addColorStop(0.22, `rgba(${r}, ${g}, ${b}, 0.88)`);
+    hgrad.addColorStop(0.55, `rgba(${r}, ${g}, ${b}, 0.35)`);
+    hgrad.addColorStop(0.80, `rgba(${r}, ${g}, ${b}, 0.08)`);
+    hgrad.addColorStop(1.0, `rgba(${r}, ${g}, ${b}, 0.0)`);
+
+    hctx.fillStyle = hgrad;
+    hctx.beginPath();
+    hctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    hctx.fill();
+
+    spriteCanvasRef.current = bodyCanvas;
+    headSpriteCanvasRef.current = headCanvas;
     lastSpriteKeyRef.current = key;
-    return canvas;
+    return { body: bodyCanvas, head: headCanvas };
   };
 
   useEffect(() => {
@@ -282,12 +303,11 @@ export const MovingAmbientLight: React.FC<MovingAmbientLightProps> = ({
     let animId: number;
 
     const resize = () => {
-      // Half-resolution rendering target per performance specs
-      const dpr = Math.min(1.0, window.devicePixelRatio || 1);
+      const dpr = Math.min(1.5, window.devicePixelRatio || 1);
       const w = window.innerWidth;
       const h = window.innerHeight;
-      canvas.width = Math.round(w * dpr * 0.5);
-      canvas.height = Math.round(h * dpr * 0.5);
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
       pathTableRef.current.rebuild(w, h, 28);
     };
 
@@ -320,18 +340,17 @@ export const MovingAmbientLight: React.FC<MovingAmbientLightProps> = ({
         window.matchMedia &&
         window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      // Smooth idle transition (dim & slow drift when paused/silent)
+      // Smooth idle transition: when paused or silent, s.idleTransition -> 1.0; when playing, s.idleTransition -> 0.0
       if (isPlaying && (beatState.smoothedEnergy > 0.03 || beatState.isBeat)) {
-        s.idleTransition = Math.max(0, s.idleTransition - dt * 2.2);
+        s.idleTransition = Math.max(0, s.idleTransition - dt * 2.5);
       } else {
-        s.idleTransition = Math.min(1.0, s.idleTransition + dt * 1.0);
+        s.idleTransition = Math.min(1.0, s.idleTransition + dt * 1.5);
       }
 
       // 1. BEAT SYNC SURGE (Ease-out over ~300ms)
       if (beatSync && beatState.isBeat && s.idleTransition < 0.7) {
         s.beatSurge = Math.min(1.0, s.beatSurge + 0.35 * Math.max(0.5, beatReaction));
       } else {
-        // Ease-out relaxation
         s.beatSurge = Math.max(0, s.beatSurge - dt * 3.33); // decay over ~300ms
       }
 
@@ -344,20 +363,20 @@ export const MovingAmbientLight: React.FC<MovingAmbientLightProps> = ({
       }
 
       // 3. MOTION POSITION
-      // Base speed: 1 lap every 8 seconds (0.125 laps/s)
+      // Base speed: 1 lap every 8 seconds (0.125 laps/s) at motionSpeed = 1.0
       const baseSpeed = 0.125 * motionSpeed;
-      const surgeSpeedMultiplier = 1.0 + (beatSync ? s.beatSurge * 0.30 : 0);
-      const idleSpeedMultiplier = 1.0 - s.idleTransition * 0.75; // slows to 25% drift when idle
-      const effectiveSpeed = baseSpeed * surgeSpeedMultiplier * idleSpeedMultiplier;
+      const surgeSpeedMultiplier = 1.0 + (beatSync ? s.beatSurge * 0.35 : 0);
+      // Idle speed: keeps sliding slowly at 40% speed when paused; full speed when playing
+      const idleSpeedMultiplier = 1.0 - s.idleTransition * 0.60;
+      const effectiveSpeed = baseSpeed * (isPlaying ? surgeSpeedMultiplier : 1.0) * idleSpeedMultiplier;
 
       let dir = direction === 'counter-clockwise' ? -1 : 1;
       if (direction === 'alternating') {
-        // Smoothly alternate direction every 16 seconds
         const altPhase = Math.sin((nowMs * 2 * Math.PI) / 16000);
         dir = altPhase >= 0 ? 1 : -1;
       }
 
-      if (!prefersReducedMotion && lightStyle !== 'static-rim') {
+      if (!prefersReducedMotion && lightStyle !== 'off') {
         s.headProgress = (s.headProgress + dir * effectiveSpeed * dt) % 1.0;
         if (s.headProgress < 0) s.headProgress += 1.0;
       }
@@ -368,25 +387,26 @@ export const MovingAmbientLight: React.FC<MovingAmbientLightProps> = ({
           ? 1.0
           : 1.0 + 0.08 * Math.sin((nowMs * 2 * Math.PI) / 3000);
 
-      // Raw luminance with beat surge (+30% on beat)
-      const beatBoost = beatSync ? s.beatSurge * 0.30 : 0;
-      const rawLuminance =
-        (0.24 + beatBoost + beatState.smoothedBass * 0.12) *
-        intensity *
-        breathing *
-        (1.0 - s.idleTransition * 0.5);
+      // Raw luminance calculation:
+      // When paused (idle): exactly 40% brightness baseline
+      // When playing: full brightness (0.85 to 1.0) with beat reaction
+      const idleLuminance = 0.40;
+      const playingLuminance =
+        (0.85 + (beatSync ? s.beatSurge * 0.25 : 0) + (beatState.smoothedBass || 0) * 0.15) * breathing;
+      const targetLuminance =
+        (idleLuminance * s.idleTransition + playingLuminance * (1.0 - s.idleTransition)) * intensity;
 
-      // Safety clamping: maximum 0.5 luminance delta per 100ms (5.0 per sec)
+      // Smooth delta limiting for flicker-free transitions
       const maxDelta = 5.0 * dt;
       let clampedLuminance = s.prevLuminance;
-      if (rawLuminance > s.prevLuminance + maxDelta) {
+      if (targetLuminance > s.prevLuminance + maxDelta) {
         clampedLuminance = s.prevLuminance + maxDelta;
-      } else if (rawLuminance < s.prevLuminance - maxDelta) {
+      } else if (targetLuminance < s.prevLuminance - maxDelta) {
         clampedLuminance = s.prevLuminance - maxDelta;
       } else {
-        clampedLuminance = rawLuminance;
+        clampedLuminance = targetLuminance;
       }
-      clampedLuminance = Math.min(0.95, Math.max(0.05, clampedLuminance));
+      clampedLuminance = Math.min(1.0, Math.max(0.35, clampedLuminance));
       s.prevLuminance = clampedLuminance;
 
       // 4. DRAWING
@@ -394,75 +414,72 @@ export const MovingAmbientLight: React.FC<MovingAmbientLightProps> = ({
       const scaleY = canvas.height / height;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (lightStyle === 'off' || mode === 'off') {
+        animId = requestAnimationFrame(render);
+        return;
+      }
+
       ctx.save();
       ctx.scale(scaleX, scaleY);
 
-      // A. Thin, very dim rim all around (stays visible)
-      ctx.beginPath();
-      ctx.roundRect(1, 1, width - 2, height - 2, 28);
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = `rgba(${baseR}, ${baseG}, ${baseB}, ${Math.min(0.35, clampedLuminance * 0.35)})`;
-      ctx.stroke();
+      // SLIDING AMBIENT LIGHT AROUND WINDOW (Soft, continuous glowing perimeter ribbon)
+      const { body: bodySprite, head: headSprite } = getGlowSprite(baseR, baseG, baseB);
+      const count = lightCount === 2 ? 2 : 1;
+      const bodyLength = Math.max(0.20, Math.min(0.45, lightLength || 0.30));
+      const numSprites = profile.tier === 'low' || profile.tier === 'minimal' ? 64 : 110;
+      const baseGlowRadius = Math.max(36, Math.min(80, Math.min(width, height) * 0.06 * glowSize));
 
-      // B. Sliding Ambient Light Body (or Static Rim / Beat Pulse)
-      if (lightStyle === 'static-rim' || prefersReducedMotion) {
-        // Static gentle glow rim
-        ctx.lineWidth = 4 * glowSize;
-        ctx.strokeStyle = `rgba(${baseR}, ${baseG}, ${baseB}, ${clampedLuminance * 0.4})`;
-        ctx.stroke();
-      } else if (lightStyle === 'beat-pulse') {
-        // Beat Pulse: expanding rim pulse
-        const pulseWidth = (2 + (beatSync ? s.beatSurge * 14 : 0)) * glowSize;
-        ctx.lineWidth = pulseWidth;
-        ctx.strokeStyle = `rgba(${baseR}, ${baseG}, ${baseB}, ${clampedLuminance * 0.6})`;
-        ctx.stroke();
-      } else {
-        // SLIDING AMBIENT LIGHT AROUND WINDOW
-        const sprite = getGlowSprite(baseR, baseG, baseB);
-        const count = lightCount === 2 ? 2 : 1;
-        const bodyLength = Math.max(0.18, Math.min(0.45, lightLength || 0.30));
-        const numSprites = profile.tier === 'low' || profile.tier === 'minimal' ? 16 : 28;
-        const maxInwardReach = Math.min(width, height) * (0.10 * glowSize);
+      ctx.globalCompositeOperation = 'lighter'; // Additive blending for radiant light bleed
 
-        ctx.globalCompositeOperation = 'lighter'; // Additive blending for soft organic light bleed
+      for (let l = 0; l < count; l++) {
+        const headOffset = l === 1 ? 0.5 : 0;
+        const headS = (s.headProgress + headOffset) % 1.0;
 
-        for (let l = 0; l < count; l++) {
-          const headOffset = l === 1 ? 0.5 : 0;
-          const headS = (s.headProgress + headOffset) % 1.0;
+        // Sample head position for luminous comet head tip
+        const headSample = pathTable.sample(headS);
+        const headInward = 4 * glowSize;
+        const headCx = headSample.x + headSample.nx * headInward;
+        const headCy = headSample.y + headSample.ny * headInward;
+        const headDrawSize = baseGlowRadius * 2.4;
 
-          for (let step = 0; step < numSprites; step++) {
-            const u = step / (numSprites - 1); // 0 at head, 1 at tail
-            // Point along body trailing behind head
-            const normDist = (headS - dir * u * bodyLength + 1.0) % 1.0;
-            const sample = pathTable.sample(normDist);
+        // Draw seamless continuous trailing body (high-density overlapping sprites)
+        for (let step = 0; step < numSprites; step++) {
+          const u = step / (numSprites - 1); // 0 at head, 1 at tail
+          const normDist = (headS - dir * u * bodyLength + 1.0) % 1.0;
+          const sample = pathTable.sample(normDist);
 
-            // Inward reach: 8-12% at head, narrows toward tail
-            const reach = maxInwardReach * (1.0 - 0.45 * u);
-            const cx = sample.x + sample.nx * reach;
-            const cy = sample.y + sample.ny * reach;
+          // Hug the edge: small inward offset so the glow hugs the bezel and bleeds softly inward
+          const inward = Math.max(4, Math.min(18, 6 * glowSize * (1.0 - 0.3 * u)));
+          const cx = sample.x + sample.nx * inward;
+          const cy = sample.y + sample.ny * inward;
 
-            // Brightness eases from full at head to zero at tail
-            const easeAlpha = Math.pow(1.0 - u, 1.4);
-            let alpha = clampedLuminance * easeAlpha * 0.75;
+          // Sprite draw size tapering gently from head to tail
+          const drawSize = baseGlowRadius * 2 * (1.0 - 0.35 * u);
 
-            // Corners: fans out and brightens slightly (+15%)
-            if (sample.isCorner) {
-              alpha = Math.min(1.0, alpha * 1.15);
-            }
+          // Alpha eases smoothly along the trailing body
+          const easeAlpha = Math.pow(1.0 - u, 1.3);
+          const stepAlpha = (clampedLuminance / (numSprites * 0.16)) * easeAlpha;
 
-            // Sprite draw size
-            const drawSize = reach * 2.8 * (1.0 - 0.25 * u);
-
-            ctx.globalAlpha = Math.min(1.0, Math.max(0, alpha));
-            ctx.drawImage(
-              sprite,
-              cx - drawSize / 2,
-              cy - drawSize / 2,
-              drawSize,
-              drawSize
-            );
-          }
+          ctx.globalAlpha = Math.min(0.9, Math.max(0.01, stepAlpha));
+          ctx.drawImage(
+            bodySprite,
+            cx - drawSize / 2,
+            cy - drawSize / 2,
+            drawSize,
+            drawSize
+          );
         }
+
+        // Draw luminous comet head tip (accent core at the leading edge)
+        ctx.globalAlpha = Math.min(1.0, clampedLuminance * 0.95);
+        ctx.drawImage(
+          headSprite,
+          headCx - headDrawSize / 2,
+          headCy - headDrawSize / 2,
+          headDrawSize,
+          headDrawSize
+        );
       }
 
       ctx.restore();
@@ -495,5 +512,5 @@ export const MovingAmbientLight: React.FC<MovingAmbientLightProps> = ({
     getBeatState,
   ]);
 
-  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0 w-full h-full" />;
+  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-[1] w-full h-full" />;
 };

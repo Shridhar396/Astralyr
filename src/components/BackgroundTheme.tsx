@@ -175,17 +175,15 @@ export const BackgroundTheme: React.FC<BackgroundThemeProps> = ({
         return { background: clamped };
       }
       case 'gradient': {
-        const clampedColors = (bgGradientColors.length >= 2 ? bgGradientColors : ['#090a0f', '#181b26']).map((c) =>
-          clampColorForBackground(c, 0.22, bgIntensity)
-        );
+        const colors = bgGradientColors && bgGradientColors.length >= 2 ? bgGradientColors : ['#230b1e', '#3b1024', '#150616'];
         const grainUri = generateGrainDataUri(bgGrain);
         let grad = '';
         if (bgGradientType === 'radial') {
-          grad = `radial-gradient(circle at center, ${clampedColors.join(', ')})`;
+          grad = `radial-gradient(circle at center, ${colors.join(', ')})`;
         } else if (bgGradientType === 'conic') {
-          grad = `conic-gradient(from ${bgGradientAngle}deg at 50% 50%, ${clampedColors.join(', ')})`;
+          grad = `conic-gradient(from ${bgGradientAngle}deg at 50% 50%, ${colors.join(', ')})`;
         } else {
-          grad = `linear-gradient(${bgGradientAngle}deg, ${clampedColors.join(', ')})`;
+          grad = `linear-gradient(${bgGradientAngle}deg, ${colors.join(', ')})`;
         }
         return { background: grainUri ? `${grainUri}, ${grad}` : grad };
       }
@@ -207,8 +205,7 @@ export const BackgroundTheme: React.FC<BackgroundThemeProps> = ({
 
         const sortedStops = [...cg.stops].sort((a, b) => a.position - b.position);
         const stopStrings = sortedStops.map((st) => {
-          const clamped = clampColorForBackground(st.color, 0.22, bgIntensity);
-          return `${clamped} ${Math.round(st.position * 100)}%`;
+          return `${st.color} ${Math.round(st.position * 100)}%`;
         });
 
         const grainUri = generateGrainDataUri(cg.grain || bgGrain);
@@ -298,7 +295,7 @@ export const BackgroundTheme: React.FC<BackgroundThemeProps> = ({
     }
   }, [currentBgStyle]);
 
-  // Readability Guard: measure solid / gradient luminance
+  // Readability Guard: measure solid / gradient / custom luminance
   useEffect(() => {
     if (bgMode === 'solid') {
       const lum = hexToLuminance(bgSolidColor);
@@ -306,40 +303,55 @@ export const BackgroundTheme: React.FC<BackgroundThemeProps> = ({
       if (onReadabilityWarning) onReadabilityWarning(isBright);
       setReadabilityOverlayAlpha(isBright ? Math.min(0.65, (lum - 0.35) * 1.5) : 0);
     } else if (bgMode === 'gradient') {
-      const lums = bgGradientColors.map(hexToLuminance);
+      const lums = (bgGradientColors || []).map(hexToLuminance);
       const avgLum = lums.reduce((a, b) => a + b, 0) / Math.max(1, lums.length);
       const isBright = avgLum > 0.35;
       if (onReadabilityWarning) onReadabilityWarning(isBright);
       setReadabilityOverlayAlpha(isBright ? Math.min(0.65, (avgLum - 0.35) * 1.5) : 0);
+    } else if (bgMode === 'custom' && customGradient?.stops) {
+      const lums = customGradient.stops.map((s) => hexToLuminance(s.color));
+      const avgLum = lums.reduce((a, b) => a + b, 0) / Math.max(1, lums.length);
+      const isBright = avgLum > 0.35;
+      if (onReadabilityWarning) onReadabilityWarning(isBright);
+      setReadabilityOverlayAlpha(isBright ? Math.min(0.65, (avgLum - 0.35) * 1.5) : 0);
+    } else if (bgMode !== 'wallpaper' && bgMode !== 'album') {
+      setReadabilityOverlayAlpha(0);
+      if (onReadabilityWarning) onReadabilityWarning(false);
     }
-  }, [bgMode, bgSolidColor, bgGradientColors, onReadabilityWarning]);
+  }, [bgMode, bgSolidColor, bgGradientColors, customGradient, onReadabilityWarning]);
 
   return (
-    <div className="fixed inset-0 pointer-events-none -z-20 overflow-hidden select-none bg-black">
+    <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden select-none">
+      {/* Base black fallback */}
+      <div className="absolute inset-0 bg-black -z-10" />
+
       {/* Layer 0 (800ms crossfade) */}
       <div
-        className="absolute inset-0 transition-opacity duration-800 ease-in-out"
+        className="absolute inset-0"
         style={{
           ...layers.layer0,
           opacity: layers.active === 0 ? 1 : 0,
+          transition: 'opacity 800ms ease-in-out',
         }}
       />
 
       {/* Layer 1 (800ms crossfade) */}
       <div
-        className="absolute inset-0 transition-opacity duration-800 ease-in-out"
+        className="absolute inset-0"
         style={{
           ...layers.layer1,
           opacity: layers.active === 1 ? 1 : 0,
+          transition: 'opacity 800ms ease-in-out',
         }}
       />
 
       {/* Readability Guard Dark Overlay (Applies automatically if background is too bright) */}
       {readabilityOverlayAlpha > 0.01 && (
         <div
-          className="absolute inset-0 transition-opacity duration-500 ease-in-out pointer-events-none"
+          className="absolute inset-0 pointer-events-none"
           style={{
             backgroundColor: `rgba(0, 0, 0, ${readabilityOverlayAlpha.toFixed(2)})`,
+            transition: 'opacity 500ms ease-in-out',
           }}
         />
       )}
