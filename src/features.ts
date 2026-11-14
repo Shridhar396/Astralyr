@@ -130,10 +130,23 @@ export function isVisualFeature(feature: FeatureName): boolean {
   ].includes(feature);
 }
 
+// Prompt 1: Unlocked for now (defaults to true). Tests can toggle via setUnlockAllFeatures(false).
+let unlockAllFeatures = true;
+
+export function setUnlockAllFeatures(unlocked: boolean): void {
+  unlockAllFeatures = unlocked;
+}
+
+export function isAllFeaturesUnlocked(): boolean {
+  return unlockAllFeatures;
+}
+
 /**
  * Check if the active edition or preview has access to a specific feature.
  */
 export function hasFeature(feature: FeatureName): boolean {
+  if (unlockAllFeatures) return true;
+
   const edition = getEdition();
 
   // Desktop Pro has all features

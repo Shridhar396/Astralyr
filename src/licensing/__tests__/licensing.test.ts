@@ -9,6 +9,7 @@ import {
   hasUsedProPreview,
   FREE_ALLOWED_FONTS,
   FREE_ALLOWED_THEMES,
+  setUnlockAllFeatures,
 } from '../../features';
 import { LemonSqueezyProvider } from '../lemonSqueezy';
 import { DodoPaymentsProvider } from '../dodoPayments';
@@ -17,6 +18,7 @@ import { LICENSING_CONFIG } from '../config';
 
 describe('Astralyr Feature Gating & Editions', () => {
   beforeEach(() => {
+    setUnlockAllFeatures(false);
     cancelProPreview();
     const mockStorage = (() => {
       let store: Record<string, string> = {};
@@ -32,6 +34,7 @@ describe('Astralyr Feature Gating & Editions', () => {
   });
 
   afterEach(() => {
+    setUnlockAllFeatures(true);
     cancelProPreview();
     vi.unstubAllGlobals();
   });

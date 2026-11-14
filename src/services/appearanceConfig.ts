@@ -17,7 +17,7 @@ export type AmbientMotionMode = 'off' | 'calm' | 'beat' | 'party';
 export type AmbientStyle = 'sliding' | 'off';
 
 export type AmbientLightStyle = 'sliding' | 'off';
-export type BackgroundMode = 'solid' | 'gradient' | 'custom' | 'wallpaper' | 'album' | 'mesh';
+export type BackgroundMode = 'curated' | 'solid' | 'gradient' | 'custom' | 'wallpaper' | 'album' | 'mesh';
 export type GradientType = 'linear' | 'radial' | 'conic';
 
 export type VisualQuality = 'auto' | 'high' | 'medium' | 'low' | 'minimal';
@@ -268,6 +268,7 @@ export interface AppearanceConfig {
 
   // Background Theme
   bgMode: BackgroundMode;
+  bgCuratedId: string; // 'crimson', 'ember', 'violet', etc.
   bgSolidColor: string; // default '#000000'
   bgGradientType: GradientType; // 'linear' | 'radial' | 'conic'
   bgGradientAngle: number; // 0 to 360 degrees
@@ -371,8 +372,8 @@ export const DEFAULT_APPEARANCE_CONFIG: AppearanceConfig = {
   showAmPm: false,
   showSeconds: false,
   leadingZero: true,
-  timeFont: 'sf-style',
-  timeWeight: 200,
+  timeFont: 'playfair-display',
+  timeWeight: 400,
   timeSize: 110,
 
   dateFormat: 'short',
@@ -403,7 +404,8 @@ export const DEFAULT_APPEARANCE_CONFIG: AppearanceConfig = {
   ambientBeatSync: true,
 
   // Background Theme
-  bgMode: 'solid',
+  bgMode: 'curated',
+  bgCuratedId: 'crimson',
   bgSolidColor: '#000000',
   bgGradientType: 'linear',
   bgGradientAngle: 135,
@@ -661,7 +663,7 @@ export function getFontFamily(fontId: string): string {
   return found ? found.family : 'system-ui, "Segoe UI", Roboto, sans-serif';
 }
 
-const STORAGE_KEY = 'ambient_visualizer_appearance_v1';
+const STORAGE_KEY = 'ambient_visualizer_appearance_v2';
 
 export function loadStoredAppearance(): AppearanceConfig {
   try {

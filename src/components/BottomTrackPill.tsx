@@ -20,21 +20,12 @@ import {
   Library,
   Heart,
   FolderPlus,
-  Lock,
 } from 'lucide-react';
 import { MusicTrack } from '../types/lyrics';
 import { PlaybackState } from '../types/radio';
 import { MusicSearchService, AudiusTrackItem } from '../services/musicSearchService';
-import {
-  getEdition,
-  hasFeature,
-  startProPreview,
-  hasUsedProPreview,
-  subscribeProPreview,
-  GET_DESKTOP_URL,
-} from '../features';
 
-export type AmbientColorMode = 'preset' | 'album' | 'autocycle' | 'custom';
+export type AmbientColorMode = 'auto' | 'preset' | 'album' | 'autocycle' | 'custom';
 
 export interface AmbientColorConfig {
   mode: AmbientColorMode;
@@ -122,20 +113,6 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
 }) => {
   const [showSearchDrawer, setShowSearchDrawer] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [previewRemaining, setPreviewRemaining] = useState<number>(0);
-  const [previewUsed, setPreviewUsed] = useState<boolean>(hasUsedProPreview());
-  const edition = getEdition();
-  const isFreeOrWeb = edition === 'web' || edition === 'desktop-free';
-
-  useEffect(() => {
-    const unsub = subscribeProPreview((remaining) => {
-      setPreviewRemaining(remaining);
-      if (hasUsedProPreview()) {
-        setPreviewUsed(true);
-      }
-    });
-    return unsub;
-  }, []);
 
   // Audius Live Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -298,16 +275,7 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
           <div className="grid grid-cols-2 gap-2 mb-3">
             {/* Album Color */}
             <button
-              onClick={() => {
-                if (!hasFeature('album_background')) {
-                  if (!hasUsedProPreview()) {
-                    startProPreview();
-                    onUpdateColorConfig({ mode: 'album' });
-                  }
-                  return;
-                }
-                onUpdateColorConfig({ mode: 'album' });
-              }}
+              onClick={() => onUpdateColorConfig({ mode: 'album' })}
               className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
                 colorConfig.mode === 'album'
                   ? 'bg-white/20 border-white/50 text-white shadow-sm'
@@ -318,7 +286,6 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
                 <Disc3 className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Album Color</span>
               </div>
-              {!hasFeature('album_background') && <Lock className="w-2.5 h-2.5 text-amber-400" />}
             </button>
 
             {/* Auto Cycle */}
@@ -339,20 +306,12 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
           <div className="flex items-center justify-between p-2 rounded-xl bg-white/5 border border-white/10 mb-3">
             <span className="text-xs text-white/70 flex items-center space-x-1">
               <span>Custom Color:</span>
-              {!hasFeature('moving_ambient_light') && <Lock className="w-2.5 h-2.5 text-amber-400" />}
             </span>
             <div className="flex items-center space-x-2">
               <input
                 type="color"
                 value={colorConfig.customColor}
                 onChange={(e) => {
-                  if (!hasFeature('moving_ambient_light')) {
-                    if (!hasUsedProPreview()) {
-                      startProPreview();
-                      onUpdateColorConfig({ mode: 'custom', customColor: e.target.value });
-                    }
-                    return;
-                  }
                   onUpdateColorConfig({ mode: 'custom', customColor: e.target.value });
                 }}
                 className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
@@ -551,43 +510,6 @@ export const BottomTrackPill: React.FC<BottomTrackPillProps> = ({
               <Info className="w-3.5 h-3.5 text-white/80" />
               <span className="hidden sm:inline">About</span>
             </button>
-
-            {/* Pro Preview or Desktop Upgrade CTA (Web & Free Mode) */}
-            {isFreeOrWeb && (
-              <div className="flex items-center">
-                {previewRemaining > 0 ? (
-                  <div
-                    className="px-2.5 py-1.5 rounded-xl flex items-center space-x-1.5 bg-amber-400/20 border border-amber-400/40 text-amber-300 font-mono text-[11px] font-semibold animate-pulse"
-                    title="Pro visual features preview active"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Pro Preview ({previewRemaining}s)</span>
-                  </div>
-                ) : !previewUsed ? (
-                  <button
-                    onClick={() => {
-                      startProPreview();
-                    }}
-                    className="px-2.5 py-1.5 rounded-xl flex items-center space-x-1.5 bg-gradient-to-r from-amber-400/20 to-purple-500/20 border border-amber-400/30 hover:border-amber-400/60 text-amber-300 hover:text-white transition-all text-[11px] font-medium"
-                    title="Preview Pro visuals for 30 seconds"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                    <span className="hidden sm:inline">Preview Pro visuals</span>
-                  </button>
-                ) : (
-                  <a
-                    href={GET_DESKTOP_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-2.5 py-1.5 rounded-xl flex items-center space-x-1.5 bg-white/5 border border-white/10 hover:border-amber-400/40 text-white/80 hover:text-amber-300 transition-all text-[11px] font-medium"
-                    title="Get Astralyr Desktop for permanent library & Pro visuals"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                    <span className="hidden sm:inline">Get Astralyr Desktop</span>
-                  </a>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Right Tools: Ambient Color Popover, Audius Search, Local File, Volume */}

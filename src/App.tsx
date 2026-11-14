@@ -45,6 +45,7 @@ import {
   DEFAULT_APPEARANCE_CONFIG,
 } from './services/appearanceConfig';
 import { DesktopModeBar } from './components/DesktopModeBar';
+import { getCuratedBackground } from './services/curatedBackgrounds';
 
 function getSongSyncKey(title?: string, artist?: string): string | null {
   if (!title || !title.trim()) return null;
@@ -115,7 +116,7 @@ function desaturateRgb([r, g, b]: [number, number, number], maxSat = 0.35): [num
 }
 
 const DEFAULT_COLOR_CONFIG: AmbientColorConfig = {
-  mode: 'preset',
+  mode: 'auto',
   presetColor: '#ffffff',
   customColor: '#a855f7',
   intensity: 1.0,
@@ -435,7 +436,7 @@ export const App: React.FC = () => {
   // Ambient Glow Color Config (saved & restored from localStorage)
   const [colorConfig, setColorConfig] = useState<AmbientColorConfig>(() => {
     try {
-      const saved = localStorage.getItem('ambient_color_config_v2');
+      const saved = localStorage.getItem('ambient_color_config_v3');
       if (saved) return { ...DEFAULT_COLOR_CONFIG, ...JSON.parse(saved) };
     } catch {}
     return DEFAULT_COLOR_CONFIG;
@@ -451,7 +452,7 @@ export const App: React.FC = () => {
     setColorConfig((prev) => {
       const updated = { ...prev, ...cfg };
       try {
-        localStorage.setItem('ambient_color_config_v2', JSON.stringify(updated));
+        localStorage.setItem('ambient_color_config_v3', JSON.stringify(updated));
       } catch (e) {
         console.warn('Failed to save color config:', e);
       }
@@ -459,13 +460,16 @@ export const App: React.FC = () => {
     });
   }, []);
 
-  // Sync --accent CSS variable live whenever colorConfig or currentTrack changes
+  // Sync --accent CSS variable live whenever colorConfig, curated background or currentTrack changes
   useEffect(() => {
     if (colorConfig.mode === 'autocycle') return;
     let r = 255,
       g = 255,
       b = 255;
-    if (colorConfig.mode === 'album') {
+    if (colorConfig.mode === 'auto') {
+      const curated = getCuratedBackground(appearanceConfig.bgCuratedId || 'crimson');
+      [r, g, b] = curated.light;
+    } else if (colorConfig.mode === 'album') {
       const raw = hexToRgb(currentTrack.primaryColor || '#ffffff');
       [r, g, b] = desaturateRgb(raw, 0.45);
     } else if (colorConfig.mode === 'custom') {
@@ -477,10 +481,14 @@ export const App: React.FC = () => {
     document.documentElement.style.setProperty('--accent', `${r} ${g} ${b}`);
     document.documentElement.style.setProperty('--accent-rgb', `rgb(${r}, ${g}, ${b})`);
     document.documentElement.style.setProperty('--accent-hex', rgbToHex(r, g, b));
-  }, [colorConfig, currentTrack.primaryColor]);
+  }, [colorConfig, currentTrack.primaryColor, appearanceConfig.bgCuratedId]);
 
   // Compute active RGB for Ambient Edge Glow and Centered Audio Ring
   const ambientColorRgb: [number, number, number] = useMemo(() => {
+    if (colorConfig.mode === 'auto') {
+      const curated = getCuratedBackground(appearanceConfig.bgCuratedId || 'crimson');
+      return curated.light;
+    }
     if (colorConfig.mode === 'album') {
       const raw = hexToRgb(currentTrack.primaryColor || '#ffffff');
       return desaturateRgb(raw, 0.4);
@@ -492,15 +500,19 @@ export const App: React.FC = () => {
       return hexToRgb(colorConfig.presetColor);
     }
     return [255, 255, 255];
-  }, [colorConfig, currentTrack.primaryColor]);
+  }, [colorConfig, currentTrack.primaryColor, appearanceConfig.bgCuratedId]);
 
   // Hex color for accent ring tinting on active words
   const activeColorHex = useMemo(() => {
+    if (colorConfig.mode === 'auto') {
+      const curated = getCuratedBackground(appearanceConfig.bgCuratedId || 'crimson');
+      return rgbToHex(curated.light[0], curated.light[1], curated.light[2]);
+    }
     if (colorConfig.mode === 'album') return currentTrack.primaryColor || '#ffffff';
     if (colorConfig.mode === 'custom') return colorConfig.customColor;
     if (colorConfig.mode === 'autocycle') return '#ffffff';
     return colorConfig.presetColor;
-  }, [colorConfig, currentTrack.primaryColor]);
+  }, [colorConfig, currentTrack.primaryColor, appearanceConfig.bgCuratedId]);
 
   // Auto-hiding Bottom Control Drawer (~3s timer)
   const [isChromeVisible, setIsChromeVisible] = useState(false);
@@ -1537,6 +1549,9 @@ export const App: React.FC = () => {
         onResetDefault={handleResetAppearance}
         initialTab={initialAppearanceTab}
         onShowToast={showToast}
+        colorConfig={colorConfig}
+        onUpdateColorConfig={handleUpdateColorConfig}
+        currentTrack={currentTrack}
       />
 
       {/* About Astralyr Dialog */}

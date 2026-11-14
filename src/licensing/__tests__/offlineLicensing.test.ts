@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import crypto from 'crypto';
 import {
   generateLicenseKey,
@@ -9,7 +9,7 @@ import {
   LicensePayload,
 } from '../offlineLicense';
 import { ASTRALYR_PUBLIC_KEY } from '../publicKey';
-import { setEdition, getEdition, hasFeature } from '../../features';
+import { setEdition, getEdition, hasFeature, setUnlockAllFeatures } from '../../features';
 
 describe('Astralyr Offline Cryptographic Licensing', () => {
   // Generate a test Ed25519 keypair for genuine signing
@@ -19,6 +19,7 @@ describe('Astralyr Offline Cryptographic Licensing', () => {
   let roguePublicKey: string;
 
   beforeEach(() => {
+    setUnlockAllFeatures(false);
     // Generate fresh keypairs for testing
     const genuine = crypto.generateKeyPairSync('ed25519', {
       publicKeyEncoding: { type: 'spki', format: 'pem' },
@@ -33,6 +34,10 @@ describe('Astralyr Offline Cryptographic Licensing', () => {
     });
     roguePrivateKey = rogue.privateKey;
     roguePublicKey = rogue.publicKey;
+  });
+
+  afterEach(() => {
+    setUnlockAllFeatures(true);
   });
 
   it('1. Base32 encoder and decoder roundtrips arbitrary byte buffers accurately', () => {

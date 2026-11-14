@@ -5,6 +5,7 @@ import {
   CustomGradientConfig,
   WallpaperConfig,
 } from '../services/appearanceConfig';
+import { getCuratedBackground } from '../services/curatedBackgrounds';
 import { extractAlbumColors, AlbumColors } from '../services/albumColorExtractor';
 import { MusicTrack } from '../types/lyrics';
 import { BeatState } from '../audio/beat';
@@ -47,7 +48,8 @@ export const BackgroundTheme: React.FC<BackgroundThemeProps> = ({
   onReadabilityWarning,
 }) => {
   const {
-    bgMode = 'solid',
+    bgMode = 'curated',
+    bgCuratedId = 'crimson',
     bgSolidColor = '#000000',
     bgGradientType = 'linear',
     bgGradientAngle = 135,
@@ -170,9 +172,12 @@ export const BackgroundTheme: React.FC<BackgroundThemeProps> = ({
   // Compute CSS background string for the active configuration
   const computeBackgroundStyle = (): { background: string; backgroundSize?: string; backgroundPosition?: string; backgroundRepeat?: string } => {
     switch (bgMode) {
+      case 'curated': {
+        const curated = getCuratedBackground(bgCuratedId || 'crimson');
+        return { background: curated.css };
+      }
       case 'solid': {
-        const clamped = clampColorForBackground(bgSolidColor, 0.22, bgIntensity);
-        return { background: clamped };
+        return { background: bgSolidColor };
       }
       case 'gradient': {
         const colors = bgGradientColors && bgGradientColors.length >= 2 ? bgGradientColors : ['#230b1e', '#3b1024', '#150616'];
@@ -260,6 +265,7 @@ export const BackgroundTheme: React.FC<BackgroundThemeProps> = ({
 
   const currentBgStyle = useMemo(() => computeBackgroundStyle(), [
     bgMode,
+    bgCuratedId,
     bgSolidColor,
     bgGradientType,
     bgGradientAngle,

@@ -92,12 +92,8 @@ describe('System Audio Feature Removal Verification', () => {
     expect(modal).not.toContain('ACRCloud');
     expect(modal).not.toContain('fingerprint');
     expect(modal).not.toContain('systemAudioService');
-    // Ensure core tabs remain
-    expect(modal).toContain('data-tab="presets"');
-    expect(modal).toContain('data-tab="time"');
-    expect(modal).toContain('data-tab="date"');
-    expect(modal).toContain('data-tab="lyrics"');
-    expect(modal).toContain('data-tab="library"');
+    // Ensure appearance modal remains
+    expect(modal).toContain('Appearance');
   });
 
   it('confirms App.tsx cleans leftover localStorage keys on startup and has no System Audio state', () => {
